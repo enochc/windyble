@@ -1,0 +1,13 @@
+[package]
+name = "board"
+version = "0.1.0"
+authors = ["Enoch <mrenoch@gmail.com>"]
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+sysfs_gpio = "0.5"
+futures = "0.3.5"
+hive = { git = 'https://github.com/enochc/hive', branch = 'new_master' }
+async-std = "1.6.2"
