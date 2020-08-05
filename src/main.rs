@@ -22,8 +22,9 @@ fn main() {
     // let my_led = Pin::new(26);
     let step_pin = Pin::new(step);
     let dir_pin = Pin::new(dir);
-    dir_pin.with_exported({
-        dir_pin.set_direction(Direction::Out).unwrap();
+
+    dir_pin.with_exported(||{
+        dir_pin.set_direction(Direction::Out)
     });
 
     step_pin.with_exported(move|| {
