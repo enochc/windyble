@@ -9,8 +9,8 @@ use std::sync::atomic::{Ordering, AtomicU8};
 
 
 fn main() {
-    let step = 20;
-    let dir = 21;
+    let step = 21;
+    let dir = 20;
 
     let hive_props = r#"
     listen = "192.168.5.41:3000"
@@ -30,9 +30,9 @@ fn main() {
 
         for _x in 0..200 {
             step_pin.set_value(1).unwrap();
-            sleep(Duration::from_millis(100));
+            sleep(Duration::from_millis(10));
             step_pin.set_value(0).unwrap();
-            sleep(Duration::from_millis(100));
+            sleep(Duration::from_millis(10));
         }
         Ok(())
     });
