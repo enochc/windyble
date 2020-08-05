@@ -23,7 +23,7 @@ fn main() {
     let step_pin = Pin::new(step);
     let dir_pin = Pin::new(dir);
 
-    let turn_delay = Duration::from_micros(100);
+    let turn_delay = Duration::from_micros(1000);
 
     // dir_pin.with_exported(||{
     //     dir_pin.set_direction(Direction::Out)
@@ -31,7 +31,7 @@ fn main() {
     //     .expect(format!("Failed to set direction on dir pin: ({:?})",dir).as_str());
 
     // step_pin.unexport().expect("Failed to Unexport step");
-
+    dir_pin.export().expect("Failed to export dir pin");
     step_pin.with_exported(move|| {
         // Sleep a moment to allow the pin privileges to update
         sleep(Duration::from_millis(80));
@@ -46,6 +46,7 @@ fn main() {
         }
         Ok(())
     }).expect("Failed to turn motor");
+    dir_pin.unexport().expect("Failed to unexport direction pin");
 
 
 
