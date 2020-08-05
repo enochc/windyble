@@ -31,9 +31,9 @@ fn main() {
     step_pin.with_exported(move|| {
         for _x in 0..200 {
             step_pin.set_value(1).unwrap();
-            sleep(Duration::from_millis(10));
+            sleep(Duration::from_millis(5));
             step_pin.set_value(0).unwrap();
-            sleep(Duration::from_millis(10));
+            sleep(Duration::from_millis(5));
         }
         Ok(())
     }).expect("Failed to turn motor");
