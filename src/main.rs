@@ -29,7 +29,7 @@ fn main() {
     // })
     //     .expect(format!("Failed to set direction on dir pin: ({:?})",dir).as_str());
 
-
+    step_pin.unexport().expect("Failed to Unexport step");
 
     step_pin.with_exported(move|| {
         step_pin.set_direction(Direction::Out)
