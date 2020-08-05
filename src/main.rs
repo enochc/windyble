@@ -24,9 +24,9 @@ fn main() {
     let dir_pin = Pin::new(dir);
 
     step_pin.set_direction(Direction::Out).unwrap();
+    dir_pin.set_direction(Direction::Out).unwrap();
 
     step_pin.with_exported(move|| {
-
 
         for _x in 0..200 {
             step_pin.set_value(1).unwrap();
