@@ -7,10 +7,15 @@ use hive::hive::Hive;
 use async_std::task;
 use async_std::sync::Arc;
 use std::sync::atomic::{Ordering, AtomicU8};
+// use std::option::NoneError;
+use std::error::Error;
+
 
 const STEP: u64 = 26;
 const DIR: u64 = 19;
 
+// pub type Result<T> = ::std::result::Result<T, dyn std::error::Error>;
+type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 struct Dir;
 impl Dir{
@@ -35,8 +40,10 @@ impl Motor {
         };
     }
 
+
     fn setDirection(&mut self, dir:u8){
         self.direction = dir;
+        self.dir_pin.set_value(dir).expect("Failed to set direction");
     }
 
     fn init(&self ){
@@ -79,9 +86,13 @@ fn main() {
     let step_pin = Pin::new(STEP);
     let dir_pin = Pin::new(DIR);
     let mut motor = Motor::new(step_pin, dir_pin);
+
+
     motor.init();
 
     motor.setDirection(Dir::CLOCKWISE);
+    motor.turn();
+    motor.setDirection(Dir::COUNTER_CLOCKWISE);
     motor.turn();
 
     motor.done();
