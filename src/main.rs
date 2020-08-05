@@ -33,7 +33,7 @@ fn main() {
 
     step_pin.with_exported(move|| {
         step_pin.set_direction(Direction::Out)
-            .expect(format!("Failed to set direction on step pin: ({:?})",step).as_str());
+            .expect(format!("Failed to set direction on step pin: ({:?})",step_pin.get_pin_num()).as_str());
 
         for _x in 0..200 {
             step_pin.set_value(1).unwrap();
