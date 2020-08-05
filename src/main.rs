@@ -13,7 +13,7 @@ fn main() {
     let dir = 21;
 
     let hive_props = r#"
-    listen = "192.168.5.48:3000"
+    listen = "192.168.5.41:3000"
     [Properties]
     light = false
     "#;
@@ -23,14 +23,20 @@ fn main() {
     let step_pin = Pin::new(step);
     let dir_pin = Pin::new(dir);
 
-    step_pin.set_direction(Direction::Out).unwrap();
 
-    for x in 0..200 {
-        step_pin.set_value(1).unwrap();
-        sleep(Duration::from_millis(100));
-        step_pin.set_value(0).unwrap();
-        sleep(Duration::from_millis(100));
-    }
+
+    step_pin.with_exported(move|| {
+        step_pin.set_direction(Direction::Out).unwrap();
+
+        for _x in 0..200 {
+            step_pin.set_value(1).unwrap();
+            sleep(Duration::from_millis(100));
+            step_pin.set_value(0).unwrap();
+            sleep(Duration::from_millis(100));
+        }
+        Ok(())
+    });
+
 
 
     // let light_value = Arc::new(AtomicU8::new(0));
