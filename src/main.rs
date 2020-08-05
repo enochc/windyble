@@ -23,8 +23,8 @@ fn main() {
     let step_pin = Pin::new(step);
     let dir_pin = Pin::new(dir);
 
-    dir_pin.set_direction(Direction::Out)
-    step_pin.set_direction(Direction::Out).unwrap();
+    dir_pin.set_direction(Direction::Out).expect("Failed to set dir on dir pin");
+    step_pin.set_direction(Direction::Out).expect("Failed to set direction on step pin");
 
     step_pin.with_exported(move|| {
         for _x in 0..200 {
