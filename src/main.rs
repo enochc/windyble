@@ -1,55 +1,68 @@
 extern crate sysfs_gpio;
-use futures::channel::{mpsc, mpsc::UnboundedSender, mpsc::UnboundedReceiver};
-use futures::executor::block_on;
 use sysfs_gpio::{Direction, Pin};
 use std::thread::sleep;
 use std::time::Duration;
 use hive::hive::Hive;
-use futures::{SinkExt, StreamExt};
 use async_std::task;
+use async_std::sync::Arc;
+use std::sync::atomic::{Ordering, AtomicU8};
 
 fn main() {
     let hive_props = r#"
     listen = "192.168.5.48:3000"
     [Properties]
-    light = 1
+    light = false
     "#;
 
     let mut pi_hive = Hive::new_from_str("SERVE", hive_props);
     let my_led = Pin::new(26);
-    my_led.with_exported(|| {
+    let light_value = Arc::new(AtomicU8::new(0));
+
+    let hive_change_light_value = light_value.clone();
+    //TODO make onchanged.connect an FnMut so I can pass in a channel that sends a value
+    pi_hive.get_mut_property("light").unwrap().on_changed.connect(move |value|{
+        println!("<<<< LIGHT CHANGED: {:?}", value);
+        let val = value.unwrap().as_bool().unwrap();
+        let tmp_val = if val {1}else{0};
+        hive_change_light_value.store(tmp_val, Ordering::SeqCst);
+
+    });
 
 
-        pi_hive.get_mut_property("light").unwrap().on_changed.connect(move |value|{
-            println!("<<<< LIGHT CHANGED: {:?}", value);
-            let val = value.unwrap().as_integer().unwrap();
-            let lightVal = match val {
-                v if v >0 => 1,
-                _ => 0,
-            };
-            my_led.set_value(lightVal).unwrap();
-            // my_led.with_exported(|| {
-            //     my_led.set_direction(Direction::Out).unwrap();
-            //     for x in 0..9 {
-            //         my_led.set_value(0).unwrap();
-            //         sleep(Duration::from_millis(200));
-            //         my_led.set_value(1).unwrap();
-            //         sleep(Duration::from_millis(200));
-            //     }
-            //     Ok(())
-            // }).unwrap();
-        });
-        let (mut send_chan, mut receive_chan) = mpsc::unbounded();
-        task::spawn(async move {
-            pi_hive.run().await;
-            send_chan.send(true).await;
-        });
+    task::spawn(async move {
+        pi_hive.run().await.expect("Have failed");
+    });
 
-        let done = block_on(receive_chan.next());
-        println!("Done");
+    let led_loop_value = light_value.clone();
+    my_led.set_direction(Direction::Out).unwrap();
+    my_led.with_exported(move|| {
+        let mut last:u8 = 0;
 
-        Ok(())
+        loop {
+            let v = led_loop_value.load(Ordering::SeqCst);
+            if v != last {
+                println!("Setting value: {}", v);
+                my_led.set_value(v).unwrap();
+                last = v;
+            }
+            // sleep a moment just to slow things down
+            sleep(Duration::from_millis(200));
+        }
+        // Ok(())
     }).unwrap();
+
+    println!("Done");
+
+    // my_led.with_exported(|| {
+    //     my_led.set_direction(Direction::Out).unwrap();
+    //     for x in 0..9 {
+    //         my_led.set_value(0).unwrap();
+    //         sleep(Duration::from_millis(200));
+    //         my_led.set_value(1).unwrap();
+    //         sleep(Duration::from_millis(200));
+    //     }
+    //     Ok(())
+    // }).unwrap();
 
 
 }
