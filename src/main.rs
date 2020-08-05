@@ -26,12 +26,14 @@ fn main() {
     // dir_pin.export().expect("Failed to export dir pin");
     dir_pin.with_exported(||{
         dir_pin.set_direction(Direction::Out)
-    }).expect(format!("Failed to set direction on dir pin: ({:?})",dir).as_str());
+    })
+        .expect(format!("Failed to set direction on dir pin: ({:?})",dir).as_str());
 
 
 
     step_pin.with_exported(move|| {
-        step_pin.set_direction(Direction::Out).expect(format!("Failed to set direction on step pin: ({:?})",set).as_str());
+        step_pin.set_direction(Direction::Out)
+            .expect(format!("Failed to set direction on step pin: ({:?})",step).as_str());
 
         for _x in 0..200 {
             step_pin.set_value(1).unwrap();
