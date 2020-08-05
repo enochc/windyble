@@ -40,6 +40,9 @@ impl Motor {
         self.step_pin.export().expect("Failed to export DIR pin");
         // Sleep a moment to allow the pin privileges to update
         sleep(Duration::from_millis(80));
+
+        self.step_pin.set_direction(Direction::Out).expect("Failed to set direction on set pin");
+        self.dir_pin.set_direction(Direction::Out).expect("Failed to set direction on direction pin");
     }
     fn done(&self){
         self.dir_pin.unexport().expect("Failed to un export DIR pin");
