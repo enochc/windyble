@@ -1,6 +1,6 @@
 extern crate sysfs_gpio;
 use sysfs_gpio::{Direction, Pin};
-use std::thread::sleep;
+use std::thread::{sleep, sleep_ms};
 use std::time::Duration;
 use hive::hive::Hive;
 use async_std::task;
@@ -32,6 +32,8 @@ fn main() {
     // step_pin.unexport().expect("Failed to Unexport step");
 
     step_pin.with_exported(move|| {
+        // Sleep a moment to allow the pin privileges to update
+        sleep(Duration::from_millis(80));
         step_pin.set_direction(Direction::Out)
             .expect(format!("Failed to set direction on step pin: ({:?})",step_pin.get_pin_num()).as_str());
 
