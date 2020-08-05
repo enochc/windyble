@@ -23,10 +23,10 @@ fn main() {
     let step_pin = Pin::new(step);
     let dir_pin = Pin::new(dir);
 
-
+    step_pin.set_direction(Direction::Out).unwrap();
 
     step_pin.with_exported(move|| {
-        step_pin.set_direction(Direction::Out).unwrap();
+
 
         for _x in 0..200 {
             step_pin.set_value(1).unwrap();
