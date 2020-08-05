@@ -23,11 +23,11 @@ fn main() {
     let step_pin = Pin::new(step);
     let dir_pin = Pin::new(dir);
 
-    // dir_pin.export().expect("Failed to export dir pin");
-    dir_pin.with_exported(||{
-        dir_pin.set_direction(Direction::Out)
-    })
-        .expect(format!("Failed to set direction on dir pin: ({:?})",dir).as_str());
+
+    // dir_pin.with_exported(||{
+    //     dir_pin.set_direction(Direction::Out)
+    // })
+    //     .expect(format!("Failed to set direction on dir pin: ({:?})",dir).as_str());
 
 
 
