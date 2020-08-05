@@ -23,6 +23,7 @@ fn main() {
     let step_pin = Pin::new(step);
     let dir_pin = Pin::new(dir);
 
+    let turn_delay = Duration::from_micros(100);
 
     // dir_pin.with_exported(||{
     //     dir_pin.set_direction(Direction::Out)
@@ -39,9 +40,9 @@ fn main() {
 
         for _x in 0..200 {
             step_pin.set_value(1).unwrap();
-            sleep(Duration::from_millis(5));
+            sleep(turn_delay);
             step_pin.set_value(0).unwrap();
-            sleep(Duration::from_millis(5));
+            sleep(turn_delay);
         }
         Ok(())
     }).expect("Failed to turn motor");
