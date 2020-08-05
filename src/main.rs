@@ -12,16 +12,18 @@ fn main() {
     let step = 26;
     let dir = 19;
 
-    let hive_props = r#"
-    listen = "192.168.5.41:3000"
-    [Properties]
-    light = false
-    "#;
+    // let hive_props = r#"
+    // listen = "192.168.5.41:3000"
+    // [Properties]
+    // light = false
+    // "#;
 
     // let mut pi_hive = Hive::new_from_str("SERVE", hive_props);
     // let my_led = Pin::new(26);
     let step_pin = Pin::new(step);
     let dir_pin = Pin::new(dir);
+
+    dir_pin.export().expect("Failed to export dir pin");
 
     dir_pin.set_direction(Direction::Out).expect("Failed to set dir on dir pin");
     step_pin.set_direction(Direction::Out).expect("Failed to set direction on step pin");
@@ -34,7 +36,7 @@ fn main() {
             sleep(Duration::from_millis(10));
         }
         Ok(())
-    });
+    }).expect("Failed to turn motor");
 
 
 
