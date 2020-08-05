@@ -35,6 +35,10 @@ impl Motor {
         };
     }
 
+    fn setDirection(&mut self, dir:u8){
+        self.direction = dir;
+    }
+
     fn init(&self ){
         self.dir_pin.export().expect("Failed to export DIR pin");
         self.step_pin.export().expect("Failed to export DIR pin");
@@ -74,9 +78,12 @@ fn main() {
     // let my_led = Pin::new(26);
     let step_pin = Pin::new(STEP);
     let dir_pin = Pin::new(DIR);
-    let motor = Motor::new(step_pin, dir_pin);
+    let mut motor = Motor::new(step_pin, dir_pin);
     motor.init();
+
+    motor.setDirection(Dir::CLOCKWISE);
     motor.turn();
+
     motor.done();
 
     // let turn_delay = Duration::from_micros(1000);
