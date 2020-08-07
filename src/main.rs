@@ -1,7 +1,7 @@
 extern crate sysfs_gpio;
 
 use sysfs_gpio::{Direction, Pin};
-use std::thread::{sleep, sleep_ms};
+use std::thread::{sleep};
 use std::time::Duration;
 use hive::hive::Hive;
 use async_std::task;
@@ -9,7 +9,7 @@ use async_std::sync::Arc;
 use std::sync::atomic::{Ordering, AtomicU8, AtomicBool};
 // use std::option::NoneError;
 
-use std::error::Error;
+// use std::error::Error;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 
@@ -18,7 +18,7 @@ const STEP: u64 = 26;
 const DIR: u64 = 19;
 
 // pub type Result<T> = ::std::result::Result<T, dyn std::error::Error>;
-type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
+// type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
 struct Dir;
 impl Dir{
@@ -47,7 +47,7 @@ impl Motor {
     }
 
     fn turn(&mut self, dir:u8){
-        self.setDirection(dir);
+        self.set_direction(dir);
         self.is_turning = true;
         while self.is_turning {
             self.step_pin.set_value(1).unwrap();
@@ -59,10 +59,11 @@ impl Motor {
 
     fn stop(&mut self){
         self.is_turning = false;
+        self.step_pin.set_value(0).unwrap();
     }
 
 
-    fn setDirection(&mut self, dir:u8){
+    fn set_direction(&mut self, dir:u8){
         self.direction = dir;
         self.dir_pin.set_value(dir).expect("Failed to set direction");
     }
@@ -138,10 +139,11 @@ fn main() {
         min.turn(Dir::COUNTER_CLOCKWISE);
 
 
-        sender.send(true);
+        sender.send(true).await.expect("Failed to send end signal");
     });
     let done = receiver.next();
-
+    motor.stop();
+    println!("DONE!!");
     motor.done();
 
 
