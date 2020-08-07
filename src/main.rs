@@ -12,6 +12,7 @@ use std::sync::atomic::{Ordering, AtomicU8, AtomicBool};
 // use std::error::Error;
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
+use futures::executor::block_on;
 
 
 const STEP: u64 = 26;
@@ -141,9 +142,9 @@ fn main() {
 
         sender.send(true).await.expect("Failed to send end signal");
     });
-    let done = receiver.next();
+    let done = block_on(receiver.next());
     motor.stop();
-    println!("DONE!!");
+    println!("DONE!! {:?}",done);
     motor.done();
 
 
