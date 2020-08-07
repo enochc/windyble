@@ -137,7 +137,11 @@ fn main() {
         // to motor work in here
         min.turn(Dir::CLOCKWISE);
         sleep(Duration::from_millis(500));
+        min.stop();
+
         min.turn(Dir::COUNTER_CLOCKWISE);
+        sleep(Duration::from_millis(500));
+        min.stop();
 
 
         sender.send(true).await.expect("Failed to send end signal");
