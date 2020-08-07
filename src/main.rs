@@ -6,9 +6,12 @@ use std::time::Duration;
 use hive::hive::Hive;
 use async_std::task;
 use async_std::sync::Arc;
-use std::sync::atomic::{Ordering, AtomicU8};
+use std::sync::atomic::{Ordering, AtomicU8, AtomicBool};
 // use std::option::NoneError;
+
 use std::error::Error;
+use futures::channel::mpsc;
+use futures::{SinkExt, StreamExt};
 
 
 const STEP: u64 = 26;
@@ -23,11 +26,13 @@ impl Dir{
     const COUNTER_CLOCKWISE:u8=0;
 }
 
+#[derive(Clone)]
 pub struct Motor {
     step_pin: Pin,
     dir_pin: Pin,
     turn_delay: Duration,
-    direction: u8 // true or false for clockwise, counterclockwise
+    direction: u8, // true or false for clockwise, counterclockwise
+    is_turning: bool,
 }
 
 impl Motor {
@@ -37,7 +42,23 @@ impl Motor {
             dir_pin,
             turn_delay: Duration::from_micros(1000),
             direction: Dir::CLOCKWISE,
+            is_turning: false,
         };
+    }
+
+    fn turn(&mut self, dir:u8){
+        self.setDirection(dir);
+        self.is_turning = true;
+        while self.is_turning {
+            self.step_pin.set_value(1).unwrap();
+            sleep(self.turn_delay);
+            self.step_pin.set_value(0).unwrap();
+            sleep(self.turn_delay);
+        }
+    }
+
+    fn stop(&mut self){
+        self.is_turning = false;
     }
 
 
@@ -60,7 +81,7 @@ impl Motor {
         self.step_pin.unexport().expect("Failed to un export DIR pin");
     }
 
-    fn turn(&self){
+    fn turn_once(&self){
         for _x in 0..200 {
             self.step_pin.set_value(1).unwrap();
             sleep(self.turn_delay);
@@ -75,71 +96,67 @@ impl Motor {
 
 fn main() {
 
-    // let hive_props = r#"
-    // listen = "192.168.5.41:3000"
-    // [Properties]
-    // light = false
-    // "#;
+    let hive_props = r#"
+    listen = "192.168.5.41:3000"
+    [Properties]
+    moveup = false
+    movedown = false
+    speed = 1000
+    "#;
 
-    // let mut pi_hive = Hive::new_from_str("SERVE", hive_props);
-    // let my_led = Pin::new(26);
+    let move_up = Arc::new(AtomicBool::new(false));
+    let move_down = Arc::new(AtomicBool::new(false));
+
+    let mut pi_hive = Hive::new_from_str("SERVE", hive_props);
+
     let step_pin = Pin::new(STEP);
     let dir_pin = Pin::new(DIR);
     let mut motor = Motor::new(step_pin, dir_pin);
 
+    pi_hive.get_mut_property("moveup").unwrap().on_changed.connect( move|value|{
+        println!("<<<< MOVE UP: {:?}", value);
+        let val = value.unwrap().as_bool().unwrap();
+        move_up.store(val, Ordering::SeqCst);
+    });
+    pi_hive.get_mut_property("move_down").unwrap().on_changed.connect(move |value|{
+        println!("<<<< MOVE DOWN: {:?}", value);
+        let val = value.unwrap().as_bool().unwrap();
+        move_down.store(val, Ordering::SeqCst);
+    });
 
+    task::spawn(async move {
+        pi_hive.run().await.expect("Have failed");
+    });
+
+    let (mut sender, mut receiver) = mpsc::unbounded();
     motor.init();
+    let mut min = motor.clone();
+    task::spawn(async move{
+        // to motor work in here
+        min.turn(Dir::CLOCKWISE);
+        sleep(Duration::from_millis(500));
+        min.turn(Dir::COUNTER_CLOCKWISE);
 
-    motor.setDirection(Dir::CLOCKWISE);
-    motor.turn();
-    motor.setDirection(Dir::COUNTER_CLOCKWISE);
-    motor.turn();
+
+        sender.send(true);
+    });
+    let done = receiver.next();
 
     motor.done();
-
-    // let turn_delay = Duration::from_micros(1000);
-    //
-    // dir_pin.export().expect("Failed to export DIR pin");
-    //
-    // step_pin.with_exported(move || {
-    //     // Sleep a moment to allow the pin privileges to update
-    //     sleep(Duration::from_millis(80));
-    //     step_pin.set_direction(Direction::Out)
-    //         .expect(format!("Failed to set direction on STEP pin: ({:?})", step_pin.get_pin_num()).as_str());
-    //     dir_pin.set_direction(Direction::Out)
-    //         .expect("Failed to set direction on Dir pin");
-    //
-    //     for _x in 0..200 {
-    //         step_pin.set_value(1).unwrap();
-    //         sleep(turn_delay);
-    //         step_pin.set_value(0).unwrap();
-    //         sleep(turn_delay);
-    //     }
-    //     Ok(())
-    // }).expect("Failed to turn motor");
-    // dir_pin.unexport().expect("Failed to unexport direction pin");
 
 
     // let light_value = Arc::new(AtomicU8::new(0));
     //
     // let hive_change_light_value = light_value.clone();
     // //TODO make onchanged.connect an FnMut so I can pass in a channel that sends a value
-    // pi_hive.get_mut_property("light").unwrap().on_changed.connect(move |value|{
-    //     println!("<<<< LIGHT CHANGED: {:?}", value);
-    //     let val = value.unwrap().as_bool().unwrap();
-    //     let tmp_val = if val {1}else{0};
-    //     hive_change_light_value.store(tmp_val, Ordering::SeqCst);
-    //
-    // });
     //
     //
-    // task::spawn(async move {
-    //     pi_hive.run().await.expect("Have failed");
-    // });
+    //
+
     //
     // let led_loop_value = light_value.clone();
     // my_led.set_direction(Direction::Out).unwrap();
-    // my_led.with_exported(move|| {
+    // step_pin.with_exported(move|| {
     //     let mut last:u8 = 0;
     //
     //     loop {
