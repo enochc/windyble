@@ -16,6 +16,7 @@ use futures::executor::block_on;
 use crate::my_pin::MyPin;
 use crate::motor::Motor;
 use std::borrow::BorrowMut;
+use std::thread;
 
 
 const STEP: u64 = 26;
@@ -86,11 +87,12 @@ fn main() {
 
         while !*upping {
             upping = cvar.wait(upping).unwrap();
+            let mut running = motor_clone.turn(Dir::CLOCKWISE);
             println!("<< GO UP {:?}", upping);
-            motor_clone.turn(Dir::CLOCKWISE);
             while *upping {
                 upping = cvar.wait(upping).unwrap();
                 println!("<< Stop {:?}", upping);
+                running.unwrap().store(false, Ordering::SeqCst);
                 motor_clone.stop();
                 break;
             }

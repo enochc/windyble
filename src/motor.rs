@@ -4,31 +4,35 @@ use crate::Dir;
 use crate::my_pin::MyPin;
 use sysfs_gpio::Direction;
 use async_std::task;
+// use runtime::task;
 use futures::channel::mpsc::UnboundedReceiver;
 use futures::channel::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::thread;
+use async_std::sync::Arc;
+// use async_std::task::JoinHandle;
 
-// #[derive(Clone)]
+#[derive(Clone)]
 pub struct Motor {
     step_pin: MyPin,
     dir_pin: MyPin,
     turn_delay: Duration,
     direction: u8,
     // true or false for clockwise, counterclockwise
-    is_turning: AtomicBool,
+    is_turning: bool,
 }
 
-impl Clone for Motor {
-    fn clone(&self) -> Self {
-        return Motor {
-            step_pin: self.step_pin.clone(),
-            dir_pin: self.dir_pin.clone(),
-            turn_delay: self.turn_delay.clone(),
-            direction: self.direction.clone(),
-            is_turning: AtomicBool::new(self.is_turning.load(Ordering::SeqCst)),
-        };
-    }
-}
+// impl Clone for Motor {
+//     fn clone(&self) -> Self {
+//         return Motor {
+//             step_pin: self.step_pin.clone(),
+//             dir_pin: self.dir_pin.clone(),
+//             turn_delay: self.turn_delay.clone(),
+//             direction: self.direction.clone(),
+//             is_turning: AtomicBool::new(self.is_turning.load(Ordering::SeqCst)),
+//         };
+//     }
+// }
 
 impl Motor {
     pub fn new(step_pin: MyPin, dir_pin: MyPin) -> Motor {
@@ -37,31 +41,36 @@ impl Motor {
             dir_pin,
             turn_delay: Duration::from_micros(1000),
             direction: Dir::CLOCKWISE,
-            is_turning: AtomicBool::new(false),
+            is_turning: false,
         };
     }
 
 
-    pub fn turn(&mut self, dir: u8) {
-        if self.is_turning.load(Ordering::SeqCst) {
+    pub fn turn(&mut self, dir: u8)->Option<Arc<AtomicBool>> {
+        if self.is_turning {
             println!("Already turning!");
-            return;
+            return None::<Arc<AtomicBool>>;
         }
+        let mut running = Arc::new(AtomicBool::new(true));
+        let running_clone = running.clone();
         self.set_direction(dir);
-        // self.is_turning.store(true,Ordering::SeqCst);
+        self.is_turning = true;
         let clone = self.clone();
-        task::spawn(async move {
-            while clone.is_turning.load(Ordering::SeqCst) {
+        println!("TURN AWAY");
+        thread::spawn(move ||{
+            while running_clone.load(Ordering::SeqCst) {
                 clone.step_pin.set_value(1).unwrap();
                 sleep(clone.turn_delay);
                 clone.step_pin.set_value(0).unwrap();
                 sleep(clone.turn_delay);
             }
+            println!("DONE");
         });
+        return Some(running);
     }
 
     pub fn stop(&mut self) {
-        self.is_turning.store(false, Ordering::SeqCst);
+        self.is_turning = false;
         self.step_pin.set_value(0).unwrap();
     }
 
