@@ -1,26 +1,23 @@
 mod motor;
 mod my_pin;
 
-use sysfs_gpio::{Direction, Pin, Error};
-use std::thread::{sleep};
-use std::time::Duration;
 use hive::hive::Hive;
 use async_std::task;
 use async_std::sync::{Arc};
 use std::sync::{Condvar, Mutex};
-use std::sync::atomic::{Ordering, AtomicU8, AtomicBool};
+use std::sync::atomic::{Ordering, AtomicBool};
 
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use futures::executor::block_on;
 use crate::my_pin::MyPin;
 use crate::motor::Motor;
-use std::borrow::BorrowMut;
-use std::thread;
 
 
 const STEP: u64 = 26;
 const DIR: u64 = 19;
+// FOR TESTING ON NOT A PI
+const TEST: bool = true;
 
 struct Dir;
 
@@ -40,18 +37,15 @@ fn main() {
     speed = 1000
     "#;
 
-
     let move_up = Arc::new(AtomicBool::new(false));
     let move_down = Arc::new(AtomicBool::new(false));
 
     let mut pi_hive = Hive::new_from_str("SERVE", hive_props);
 
-    // FOR TESTING ON NOT A PI
-    let TEST = true;
     let step_pin = MyPin::new(STEP, TEST);
     let dir_pin = MyPin::new(DIR, TEST);
 
-    let mut motor = Motor::new(step_pin, dir_pin);
+    let motor = Motor::new(step_pin, dir_pin);
 
     // let move_up_clone = move_up.clone();
     let up_pair = Arc::new((Mutex::new(false), Condvar::new()));
@@ -79,15 +73,15 @@ fn main() {
     });
 
     motor.init();
-
     let mut motor_clone = motor.clone();
+    // SPAWN MOTOR UP HANDLER
     task::spawn(async move {
         let (lock, cvar) = &*up_pair;
         let mut upping = lock.lock().unwrap();
 
         while !*upping {
             upping = cvar.wait(upping).unwrap();
-            let mut running = motor_clone.turn(Dir::CLOCKWISE);
+            let running = motor_clone.turn(Dir::CLOCKWISE);
             println!("<< GO UP {:?}", upping);
             while *upping {
                 upping = cvar.wait(upping).unwrap();
@@ -101,20 +95,6 @@ fn main() {
     });
 
     let done = block_on(receiver.next());
-
-    // loop {
-    //     move_up_new = move_up.load(Ordering::Acquire);
-    //     if move_up_current != move_up_new {
-    //         move_up_current = move_up_new;
-    //         if move_up_current {
-    //             println!("<<<< moveup");
-    //             motor.turn(Dir::CLOCKWISE);
-    //         }  else {
-    //             println!("<<<<  stop");
-    //             motor.stop()
-    //         }
-    //     }
-    // }
 
 
     motor.done();

@@ -3,10 +3,6 @@ use std::time::Duration;
 use crate::Dir;
 use crate::my_pin::MyPin;
 use sysfs_gpio::Direction;
-use async_std::task;
-// use runtime::task;
-use futures::channel::mpsc::UnboundedReceiver;
-use futures::channel::mpsc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread;
 use async_std::sync::Arc;
@@ -39,7 +35,8 @@ impl Motor {
         return Motor {
             step_pin,
             dir_pin,
-            turn_delay: Duration::from_micros(1000),
+            turn_delay: Duration::from_micros(1_000),
+            // turn_delay: Duration::from_secs(1),
             direction: Dir::CLOCKWISE,
             is_turning: false,
         };
@@ -51,7 +48,7 @@ impl Motor {
             println!("Already turning!");
             return None::<Arc<AtomicBool>>;
         }
-        let mut running = Arc::new(AtomicBool::new(true));
+        let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
         self.set_direction(dir);
         self.is_turning = true;
@@ -94,6 +91,7 @@ impl Motor {
         self.step_pin.unexport().expect("Failed to un export DIR pin");
     }
 
+    #[allow(dead_code)]
     pub fn turn_once(&self) {
         for _x in 0..200 {
             self.step_pin.set_value(1).unwrap();
