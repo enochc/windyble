@@ -1,6 +1,6 @@
 use std::thread::sleep;
 use std::time::Duration;
-use crate::Dir;
+use crate::{Dir, TEST};
 use crate::my_pin::MyPin;
 use sysfs_gpio::Direction;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -32,10 +32,15 @@ pub struct Motor {
 
 impl Motor {
     pub fn new(step_pin: MyPin, dir_pin: MyPin) -> Motor {
+        let duration = if TEST {
+            Duration::from_secs(1)
+        }else{
+            Duration::from_micros(1_000)
+        };
         return Motor {
             step_pin,
             dir_pin,
-            turn_delay: Duration::from_micros(1_000),
+            turn_delay: duration,
             // turn_delay: Duration::from_secs(1),
             direction: Dir::CLOCKWISE,
             is_turning: false,
@@ -44,6 +49,7 @@ impl Motor {
 
 
     pub fn turn(&mut self, dir: u8)->Option<Arc<AtomicBool>> {
+        println!("Turn {:?}", dir);
         if self.is_turning {
             println!("Already turning!");
             return None::<Arc<AtomicBool>>;
