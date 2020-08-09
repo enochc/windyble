@@ -9,5 +9,9 @@ edition = "2018"
 [dependencies]
 sysfs_gpio = "0.5"
 futures = "0.3.5"
-hive = { git = 'https://github.com/enochc/hive', branch = 'new_master' }
+hive = { git = 'https://github.com/enochc/hive', branch = 'new_master' , version = "0.1.300"}
 async-std = "1.6.2"
+
+# testing
+async-mutex = "1.1.5"
+smol = "0.3.3"
