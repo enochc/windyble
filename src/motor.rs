@@ -39,7 +39,7 @@ impl Motor {
        Speed value is a percentage 0 to
        returns microseconds, 1,000,000 in a sec
     */
-    pub fn setSpeed(&mut self, val:u64) {
+    pub fn set_speed(&mut self, val:u64) {
 
         let speed = (((SPEED_MAX - SPEED_MIN)/ 100) * val) + SPEED_MIN;
         println!("<<<< <<<<< <<<< SET SPEED {:?}", speed);

@@ -1,26 +1,26 @@
 mod motor;
 mod my_pin;
-
 use hive::hive::Hive;
 use async_std::task;
 use async_std::sync::{Arc};
 use std::sync::{Condvar, Mutex};
-use std::sync::atomic::{Ordering, AtomicBool, AtomicU8};
+use std::sync::atomic::{Ordering, AtomicU8};
 
 use futures::channel::mpsc;
 use futures::{SinkExt, StreamExt};
 use futures::executor::block_on;
 use crate::my_pin::MyPin;
 use crate::motor::Motor;
-use std::thread::sleep;
-use std::time::Duration;
 use std::thread;
 
 
 const STEP: u64 = 26;
 const DIR: u64 = 19;
-// FOR TESTING ON NOT A PI
+
+// FOR TESTING ON NOT A PI, use 127.0.0.1 for localhost, other for pi
 const TEST: bool = false;
+// const ADDR:&str = "127.0.0.1:3000";
+const ADDR:&str = "192.168.5.41:3000";
 
 struct Dir;
 
@@ -30,20 +30,17 @@ impl Dir {
 }
 
 
+
 fn main() {
-// PI 192.168.5.41:3000
-    let hive_props = r#"
-    listen = "127.0.0.1:3000"
+    let hive_props = format!("
+    listen = {:?}
     [Properties]
     moveup = false
     movedown = false
     speed = 1000
-    "#;
+    ", ADDR);
 
-    // let move_up = Arc::new(AtomicBool::new(false));
-    // let move_down = Arc::new(AtomicBool::new(false));
-
-    let mut pi_hive = Hive::new_from_str("SERVE", hive_props);
+    let mut pi_hive = Hive::new_from_str("SERVE", hive_props.as_str());
 
     let step_pin = MyPin::new(STEP, TEST);
     let dir_pin = MyPin::new(DIR, TEST);
@@ -106,7 +103,7 @@ fn main() {
         let mut speed = lock.lock().unwrap();
         loop {
             speed = cvar.wait(speed).unwrap();
-            motor_clone2.setSpeed(*speed as u64);
+            motor_clone2.set_speed(*speed as u64);
         };
     });
 
@@ -132,6 +129,7 @@ fn main() {
 
     // We wait here... forever
     let done = block_on(receiver.next());
+    assert_eq!(1, done.unwrap());
 
 
     motor.done();
