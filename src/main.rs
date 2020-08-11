@@ -12,12 +12,15 @@ use futures::{SinkExt, StreamExt};
 use futures::executor::block_on;
 use crate::my_pin::MyPin;
 use crate::motor::Motor;
+use std::thread::sleep;
+use std::time::Duration;
+use std::thread;
 
 
 const STEP: u64 = 26;
 const DIR: u64 = 19;
 // FOR TESTING ON NOT A PI
-const TEST: bool = true;
+const TEST: bool = false;
 
 struct Dir;
 
@@ -51,6 +54,10 @@ fn main() {
     let up_pair = Arc::new((Mutex::new(false), Condvar::new()));
     let up_pair2 = up_pair.clone();
     let up_pair3 = up_pair.clone();
+
+    let speed_pair = Arc::new((Mutex::new(0), Condvar::new()));
+    let speed_clone = speed_pair.clone();
+
     let current_dir = Arc::new(AtomicU8::new(0));
     let current_dir_clone = current_dir.clone();
     let current_dir_clone2 = current_dir.clone();
@@ -74,6 +81,15 @@ fn main() {
         cvar.notify_one();
     });
 
+    pi_hive.get_mut_property("speed").unwrap().on_changed.connect(move |value| {
+        println!("<<<< SPEED: {:?}", value);
+        let (lock, cvar) = &*speed_clone;
+        let mut speed = lock.lock().unwrap();
+        let val = value.unwrap().as_integer().unwrap();
+        *speed = val;
+        cvar.notify_one();
+    });
+
     let (mut sender, mut receiver) = mpsc::unbounded();
 
     task::spawn(async move {
@@ -82,7 +98,18 @@ fn main() {
 
     motor.init();
     let mut motor_clone = motor.clone();
-    // SPAWN MOTOR UP HANDLER
+    let mut motor_clone2 = motor_clone.clone();
+
+    // Handler for speed
+    let _ = thread::spawn(move||{
+        let (lock, cvar) = &*speed_pair;
+        let mut speed = lock.lock().unwrap();
+        loop {
+            speed = cvar.wait(speed).unwrap();
+            motor_clone2.setSpeed(*speed as u64);
+        };
+    });
+
     task::spawn(async move {
         let (lock, cvar) = &*up_pair;
         let mut upping = lock.lock().unwrap();

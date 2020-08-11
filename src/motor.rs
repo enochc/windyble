@@ -16,6 +16,7 @@ pub struct Motor {
     direction: u8,
     // true or false for clockwise, counterclockwise
     is_turning: bool,
+    step_duration:Duration,
 }
 
 // impl Clone for Motor {
@@ -30,7 +31,20 @@ pub struct Motor {
 //     }
 // }
 
+const SPEED_MIN:u64 = 500;
+const SPEED_MAX:u64 = 1_000_000;
+
 impl Motor {
+    /*
+       Speed value is a percentage 0 to
+       returns microseconds, 1,000,000 in a sec
+    */
+    pub fn setSpeed(&mut self, val:u64) {
+
+        let speed = (((SPEED_MAX - SPEED_MIN)/ 100) * val) + SPEED_MIN;
+        println!("<<<< <<<<< <<<< SET SPEED {:?}", speed);
+        self.step_duration = Duration::from_micros(speed);
+    }
     pub fn new(step_pin: MyPin, dir_pin: MyPin) -> Motor {
         let duration = if TEST {
             Duration::from_secs(1)
@@ -44,6 +58,7 @@ impl Motor {
             // turn_delay: Duration::from_secs(1),
             direction: Dir::CLOCKWISE,
             is_turning: false,
+            step_duration: Duration::from_micros(SPEED_MAX - SPEED_MIN / 2)
         };
     }
 
@@ -61,11 +76,12 @@ impl Motor {
         let clone = self.clone();
         println!("TURN AWAY");
         thread::spawn(move ||{
+
             while running_clone.load(Ordering::SeqCst) {
                 clone.step_pin.set_value(1).unwrap();
-                sleep(clone.turn_delay);
+                sleep(clone.step_duration);
                 clone.step_pin.set_value(0).unwrap();
-                sleep(clone.turn_delay);
+                sleep(clone.step_duration);
             }
             println!("DONE");
         });
