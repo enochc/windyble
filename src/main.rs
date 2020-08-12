@@ -18,9 +18,10 @@ const STEP: u64 = 26;
 const DIR: u64 = 19;
 
 // FOR TESTING ON NOT A PI, use 127.0.0.1 for localhost, other for pi
-const TEST: bool = false;
-// const ADDR:&str = "127.0.0.1:3000";
-const ADDR:&str = "192.168.5.41:3000";
+
+const TEST: bool = true;
+const ADDR:&str = "127.0.0.1:3000";
+// const ADDR:&str = "192.168.5.41:3000";
 
 struct Dir;
 
@@ -32,6 +33,7 @@ impl Dir {
 
 
 fn main() {
+    // let args: Vec<String> = env::args().collect();
     let hive_props = format!("
     listen = {:?}
     [Properties]

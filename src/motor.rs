@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{Dir, TEST};
 use crate::my_pin::MyPin;
 use sysfs_gpio::Direction;
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, Ordering, AtomicI64, AtomicU32, AtomicU64};
 use std::thread;
 use async_std::sync::Arc;
 // use async_std::task::JoinHandle;
@@ -14,9 +14,8 @@ pub struct Motor {
     dir_pin: MyPin,
     turn_delay: Duration,
     direction: u8,
-    // true or false for clockwise, counterclockwise
     is_turning: bool,
-    step_duration:Duration,
+    step_duration: Arc<AtomicU64>,
 }
 
 // impl Clone for Motor {
@@ -26,13 +25,15 @@ pub struct Motor {
 //             dir_pin: self.dir_pin.clone(),
 //             turn_delay: self.turn_delay.clone(),
 //             direction: self.direction.clone(),
-//             is_turning: AtomicBool::new(self.is_turning.load(Ordering::SeqCst)),
+//             is_turning: self.is_turning.clone(),
+//             step_duration: AtomicU32::new(self.is_turning.load(Ordering::SeqCst)),
 //         };
 //     }
 // }
 
 const SPEED_MIN:u64 = 500;
 const SPEED_MAX:u64 = 1_000_000;
+
 
 impl Motor {
     /*
@@ -43,7 +44,7 @@ impl Motor {
 
         let speed = (((SPEED_MAX - SPEED_MIN)/ 100) * val) + SPEED_MIN;
         println!("<<<< <<<<< <<<< SET SPEED {:?}", speed);
-        self.step_duration = Duration::from_micros(speed);
+        self.step_duration.store(u64::from(Duration::from_micros(speed).subsec_micros()), Ordering::SeqCst);
     }
     pub fn new(step_pin: MyPin, dir_pin: MyPin) -> Motor {
         let duration = if TEST {
@@ -58,7 +59,7 @@ impl Motor {
             // turn_delay: Duration::from_secs(1),
             direction: Dir::CLOCKWISE,
             is_turning: false,
-            step_duration: Duration::from_micros(SPEED_MAX - SPEED_MIN / 2)
+            step_duration: Arc::new(AtomicU64::new(u64::from(SPEED_MAX - SPEED_MIN / 2)))
         };
     }
 
@@ -74,14 +75,14 @@ impl Motor {
         self.set_direction(dir);
         self.is_turning = true;
         let clone = self.clone();
-        println!("TURN AWAY");
+        println!("TURN AWAY: {:?}", clone.step_duration);
+        let speed = self.step_duration.load(Ordering::SeqCst);
         thread::spawn(move ||{
-
             while running_clone.load(Ordering::SeqCst) {
                 clone.step_pin.set_value(1).unwrap();
-                sleep(clone.step_duration);
+                sleep(Duration::from_micros(speed));
                 clone.step_pin.set_value(0).unwrap();
-                sleep(clone.step_duration);
+                sleep(Duration::from_micros(speed));
             }
             println!("DONE");
         });
