@@ -1,5 +1,6 @@
 mod motor;
 mod my_pin;
+
 use hive::hive::Hive;
 use async_std::task;
 use async_std::sync::{Arc};
@@ -11,17 +12,11 @@ use futures::{SinkExt, StreamExt};
 use futures::executor::block_on;
 use crate::my_pin::MyPin;
 use crate::motor::Motor;
-use std::thread;
+use std::{thread, env};
 
 
 const STEP: u64 = 26;
 const DIR: u64 = 19;
-
-// FOR TESTING ON NOT A PI, use 127.0.0.1 for localhost, other for pi
-
-const TEST: bool = true;
-const ADDR:&str = "127.0.0.1:3000";
-// const ADDR:&str = "192.168.5.41:3000";
 
 struct Dir;
 
@@ -31,23 +26,26 @@ impl Dir {
 }
 
 
-
 fn main() {
-    // let args: Vec<String> = env::args().collect();
+    let args: Vec<String> = env::args().collect();
+    let is_test = args.contains(&String::from("test"));
+
+    let addr = if is_test { "127.0.0.1:3000" } else { "192.168.5.41:3000" };
+
     let hive_props = format!("
     listen = {:?}
     [Properties]
     moveup = false
     movedown = false
     speed = 1000
-    ", ADDR);
+    ", addr);
 
     let mut pi_hive = Hive::new_from_str("SERVE", hive_props.as_str());
 
-    let step_pin = MyPin::new(STEP, TEST);
-    let dir_pin = MyPin::new(DIR, TEST);
+    let step_pin = MyPin::new(STEP, is_test);
+    let dir_pin = MyPin::new(DIR, is_test);
 
-    let motor = Motor::new(step_pin, dir_pin);
+    let motor = Motor::new(step_pin, dir_pin, is_test);
 
     // let move_up_clone = move_up.clone();
     let up_pair = Arc::new((Mutex::new(false), Condvar::new()));
@@ -89,7 +87,7 @@ fn main() {
         cvar.notify_one();
     });
 
-    let (mut sender, mut receiver) = mpsc::unbounded();
+
 
     task::spawn(async move {
         pi_hive.run().await;
@@ -100,7 +98,7 @@ fn main() {
     let mut motor_clone2 = motor_clone.clone();
 
     // Handler for speed
-    let _ = thread::spawn(move||{
+    let _ = thread::spawn(move || {
         let (lock, cvar) = &*speed_pair;
         let mut speed = lock.lock().unwrap();
         loop {
@@ -109,13 +107,16 @@ fn main() {
         };
     });
 
+    let (mut sender, mut receiver) = mpsc::unbounded();
+    let mut sender_c = sender.clone();
+
     task::spawn(async move {
         let (lock, cvar) = &*up_pair;
         let mut upping = lock.lock().unwrap();
 
         while !*upping {
             upping = cvar.wait(upping).unwrap();
-            let dir = current_dir.load( Ordering::SeqCst);
+            let dir = current_dir.load(Ordering::SeqCst);
             let running = motor_clone.turn(dir);
             println!("<< GO UP {:?}", upping);
             while *upping {
@@ -126,7 +127,8 @@ fn main() {
                 break;
             }
         }
-        sender.send(1);
+        // TODO why does appenging an await on the line below, break everything?
+        sender_c.send(1);
     });
 
     // We wait here... forever

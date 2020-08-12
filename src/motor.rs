@@ -1,6 +1,6 @@
 use std::thread::sleep;
 use std::time::Duration;
-use crate::{Dir, TEST};
+use crate::{Dir};
 use crate::my_pin::MyPin;
 use sysfs_gpio::Direction;
 use std::sync::atomic::{AtomicBool, Ordering, AtomicI64, AtomicU32, AtomicU64};
@@ -43,11 +43,10 @@ impl Motor {
     pub fn set_speed(&mut self, val:u64) {
 
         let speed = (((SPEED_MAX - SPEED_MIN)/ 100) * val) + SPEED_MIN;
-        println!("<<<< <<<<< <<<< SET SPEED {:?}", speed);
         self.step_duration.store(u64::from(Duration::from_micros(speed).subsec_micros()), Ordering::SeqCst);
     }
-    pub fn new(step_pin: MyPin, dir_pin: MyPin) -> Motor {
-        let duration = if TEST {
+    pub fn new(step_pin: MyPin, dir_pin: MyPin, is_test:bool) -> Motor {
+        let duration = if is_test {
             Duration::from_secs(1)
         }else{
             Duration::from_micros(1_000)
@@ -65,7 +64,6 @@ impl Motor {
 
 
     pub fn turn(&mut self, dir: u8)->Option<Arc<AtomicBool>> {
-        println!("Turn {:?}", dir);
         if self.is_turning {
             println!("Already turning!");
             return None::<Arc<AtomicBool>>;
