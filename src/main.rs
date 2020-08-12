@@ -108,7 +108,6 @@ fn main() {
     });
 
     let (mut sender, mut receiver) = mpsc::unbounded();
-    let mut sender_c = sender.clone();
 
     task::spawn(async move {
         let (lock, cvar) = &*up_pair;
@@ -128,7 +127,7 @@ fn main() {
             }
         }
         // TODO why does appenging an await on the line below, break everything?
-        sender_c.send(1);
+        sender.send(1);
     });
 
     // We wait here... forever

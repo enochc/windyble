@@ -3,7 +3,7 @@ use std::time::Duration;
 use crate::{Dir};
 use crate::my_pin::MyPin;
 use sysfs_gpio::Direction;
-use std::sync::atomic::{AtomicBool, Ordering, AtomicI64, AtomicU32, AtomicU64};
+use std::sync::atomic::{AtomicBool, Ordering, AtomicU64};
 use std::thread;
 use async_std::sync::Arc;
 // use async_std::task::JoinHandle;
@@ -31,8 +31,8 @@ pub struct Motor {
 //     }
 // }
 
-const SPEED_MIN:u64 = 500;
-const SPEED_MAX:u64 = 1_000_000;
+const SPEED_MIN:u64 = 200;
+const SPEED_MAX:u64 = 100_000;
 
 
 impl Motor {
@@ -73,7 +73,7 @@ impl Motor {
         self.set_direction(dir);
         self.is_turning = true;
         let clone = self.clone();
-        println!("TURN AWAY: {:?}", clone.step_duration);
+        println!("<<<< .... TURN AWAY: {:?} .... >>>>", clone.step_duration);
         let speed = self.step_duration.load(Ordering::SeqCst);
         thread::spawn(move ||{
             while running_clone.load(Ordering::SeqCst) {
