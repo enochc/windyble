@@ -59,7 +59,6 @@ fn main() {
     let current_dir_clone = current_dir.clone();
     let current_dir_clone2 = current_dir.clone();
     pi_hive.get_mut_property("moveup").unwrap().on_changed.connect(move |value| {
-        println!("<<<< MOVE UP: {:?}", value);
         let (lock, cvar) = &*up_pair2;
         let mut going_up = lock.lock().unwrap();
         let val = value.unwrap().as_bool().unwrap();
@@ -69,7 +68,6 @@ fn main() {
     });
 
     pi_hive.get_mut_property("movedown").unwrap().on_changed.connect(move |value| {
-        println!("<<<< MOVE DOWN: {:?}", value);
         let (lock, cvar) = &*up_pair3;
         let mut going_down = lock.lock().unwrap();
         let val = value.unwrap().as_bool().unwrap();
@@ -79,15 +77,12 @@ fn main() {
     });
 
     pi_hive.get_mut_property("speed").unwrap().on_changed.connect(move |value| {
-        println!("<<<< SPEED: {:?}", value);
         let (lock, cvar) = &*speed_clone;
         let mut speed = lock.lock().unwrap();
         let val = value.unwrap().as_integer().unwrap();
         *speed = val;
         cvar.notify_one();
     });
-
-
 
     task::spawn(async move {
         pi_hive.run().await;

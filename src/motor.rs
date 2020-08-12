@@ -41,7 +41,7 @@ impl Motor {
        returns microseconds, 1,000,000 in a sec
     */
     pub fn set_speed(&mut self, val:u64) {
-
+        println!("<<<<<< set speed")
         let speed = (((SPEED_MAX - SPEED_MIN)/ 100) * val) + SPEED_MIN;
         self.step_duration.store(u64::from(Duration::from_micros(speed).subsec_micros()), Ordering::SeqCst);
     }
