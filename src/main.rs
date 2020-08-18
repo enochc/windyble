@@ -15,8 +15,8 @@ use crate::motor::Motor;
 use std::{thread, env};
 
 
-const STEP: u64 = 26;
-const DIR: u64 = 19;
+const STEP: u64 = 26; // purple
+const DIR: u64 = 19; //While
 
 struct Dir;
 
