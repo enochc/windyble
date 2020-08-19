@@ -98,7 +98,7 @@ impl Motor {
                 p.set_value(1).expect("Failed to set Pt1 pin value");
                 // if pt1 exists, so does pt1
                 self.pt_pin_2.as_ref().unwrap().set_value(1).expect("Failed to set Pt2 pin value");
-                println!("Set pt pins High (for low amperage)")
+                println!("Set pt pins High (for low amperage)");
             },
             _ => {println!("No potentiometer pins")}
         }
@@ -148,6 +148,14 @@ impl Motor {
         self.dir_pin.export().expect("Failed to export DIR pin");
         self.step_pin.export().expect("Failed to export STEP pin");
         self.power_pin.export().expect("Failed to export PWR pin");
+        match &self.pt_pin_1 {
+            Some(p) => {
+                p.export().expect("Failed to export pt1");
+                self.pt_pin_2.as_ref().unwrap().export().expect("Failed to export pt2")
+            },
+            _ => println!("No pt pins")
+
+        }
         // Sleep a moment to allow the pin privileges to update
         sleep(Duration::from_millis(80));
 
@@ -159,6 +167,13 @@ impl Motor {
         self.dir_pin.unexport().expect("Failed to un un export DIR pin");
         self.step_pin.unexport().expect("Failed to un un export STEP pin");
         self.power_pin.unexport().expect("Failed to un un export PWR pin");
+        match &self.pt_pin_1 {
+            Some(p) => {
+                p.unexport().expect("Failed to un export pt1");
+                self.pt_pin_2.as_ref().unwrap().unexport().expect("Failed to un export pt2");
+            },
+            _ => println!("No pt pins")
+        }
     }
 
     #[allow(dead_code)]
