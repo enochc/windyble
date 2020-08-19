@@ -123,6 +123,9 @@ impl Motor {
         // Sleep a moment to allow the pin privileges to update
         sleep(Duration::from_millis(80));
 
+        //TODO remove this
+        self.power_motor(true);
+
         self.step_pin.set_direction(Direction::Out).expect("Failed to set direction on set pin");
         self.dir_pin.set_direction(Direction::Out).expect("Failed to set direction on direction pin");
         self.power_pin.set_direction(Direction::Out).expect("Failed to set direction on power pin");
