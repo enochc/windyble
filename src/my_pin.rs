@@ -19,6 +19,10 @@ impl MyPin {
             is_test
         };
     }
+    pub fn get_value(&self)-> sysfs_gpio::Result<u8> {
+        self.pin.unwrap().get_value()
+    }
+
     pub fn set_value(&self, val: u8) -> Result<(), Error> {
         return match self.pin {
             Some(p) => p.set_value(val),

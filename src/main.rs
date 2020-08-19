@@ -17,6 +17,7 @@ use std::{thread, env};
 
 const STEP: u64 = 26; // purple
 const DIR: u64 = 19; //While
+const POWER_RELAY_PIN:u64 = 13;
 
 struct Dir;
 
@@ -44,8 +45,9 @@ fn main() {
 
     let step_pin = MyPin::new(STEP, is_test);
     let dir_pin = MyPin::new(DIR, is_test);
+    let power_pin = MyPin::new(POWER_RELAY_PIN, is_test);
 
-    let motor = Motor::new(step_pin, dir_pin, is_test);
+    let motor = Motor::new(step_pin, dir_pin, power_pin, is_test);
 
     // let move_up_clone = move_up.clone();
     let up_pair = Arc::new((Mutex::new(false), Condvar::new()));
@@ -58,6 +60,7 @@ fn main() {
     let current_dir = Arc::new(AtomicU8::new(0));
     let current_dir_clone = current_dir.clone();
     let current_dir_clone2 = current_dir.clone();
+
     pi_hive.get_mut_property("moveup").unwrap().on_changed.connect(move |value| {
         let (lock, cvar) = &*up_pair2;
         let mut going_up = lock.lock().unwrap();
@@ -90,7 +93,7 @@ fn main() {
 
     motor.init();
     let mut motor_clone = motor.clone();
-    let mut motor_clone2 = motor_clone.clone();
+    let motor_clone2 = motor_clone.clone();
 
     // Handler for speed
     let _ = thread::spawn(move || {
@@ -121,7 +124,7 @@ fn main() {
                 break;
             }
         }
-        // TODO why does appenging an await on the line below, break everything?
+        // TODO why does appending an await on the line below, break everything?
         sender.send(1);
     });
 
