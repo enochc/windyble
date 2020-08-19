@@ -25,7 +25,9 @@ impl MyPin {
 
     pub fn set_value(&self, val: u8) -> Result<(), Error> {
         return match self.pin {
-            Some(p) => p.set_value(val),
+            Some(p) => {
+                p.set_value(val)
+            },
             None => {
                 println!("Set PIN {:?} = {:?}",self.number, val);
                 Ok(())

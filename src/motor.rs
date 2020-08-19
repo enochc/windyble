@@ -13,13 +13,13 @@ pub struct Motor {
     step_pin: MyPin,
     dir_pin: MyPin,
     power_pin: MyPin,
+    pt_pin_1: MyPin,
+    pt_pin_2: MyPin,
     turn_delay: Duration,
     // todo I can read the pin value for direction, I don't need this property
     direction: u8,
     is_turning: bool,
     step_duration: Arc<AtomicU64>,
-    pt_pin_1: Option<MyPin>,
-    pt_pin_2: Option<MyPin>,
 }
 
 // impl Clone for Motor {
@@ -56,7 +56,7 @@ impl Motor {
     fn is_on(&self) -> bool {
         return self.power_pin.get_value().unwrap() == 1;
     }
-    pub fn new(step_pin: MyPin, dir_pin: MyPin, power_pin: MyPin, is_test:bool) -> Motor {
+    pub fn new(step_pin: MyPin, dir_pin: MyPin, power_pin: MyPin, pt_pin_1:MyPin, pt_pin_2:MyPin, is_test:bool) -> Motor {
         let duration = if is_test {
             Duration::from_secs(1)
         }else{
@@ -66,39 +66,45 @@ impl Motor {
             step_pin,
             dir_pin,
             power_pin,
+            pt_pin_1,
+            pt_pin_2,
             turn_delay: duration,
             // turn_delay: Duration::from_secs(1),
             direction: Dir::CLOCKWISE,
             is_turning: false,
             step_duration: Arc::new(AtomicU64::new(u64::from(SPEED_MAX - SPEED_MIN / 2))),
-            pt_pin_1:None,
-            pt_pin_2:None,
-        };
-    }
 
-    pub fn set_pt_pins(&mut self, pt1:MyPin, pt2:MyPin){
-        self.pt_pin_1 = Some(pt1);
-        self.pt_pin_2 = Some(pt2);
+        };
     }
 
     // TODO this only sets to lowest value... I think
     // set potentiometer
     /*
-    p1	p2	Current Limit  is Z high?
+    p1	p2	Current Limit  is Z high? no, it's an input
     Z	Z	0.5 A
     Low	Z	1 A
     Z	Low	1.5 A
     Low	Low	2 A
      */
-    pub fn setPotentiometer(&self, pt_val:i8){
-        match &self.pt_pin_1 {
-            Some(p) => {
-                p.set_value(1).expect("Failed to set Pt1 pin value");
-                // if pt1 exists, so does pt1
-                self.pt_pin_2.as_ref().unwrap().set_value(1).expect("Failed to set Pt2 pin value");
-                println!("Set pt pins High (for low amperage)");
+    pub fn set_potentiometer(&self, pt_val:i64){
+        match pt_val {
+            1 => {
+                self.pt_pin_1.set_direction(Direction::Low).expect("Failed to set direction on pt pin1");
+                self.pt_pin_2.set_direction(Direction::In).expect("Failed to set direction on pt pin2");
             },
-            _ => {println!("No potentiometer pins")}
+            2 => {
+                self.pt_pin_1.set_direction(Direction::In).expect("Failed to set direction on pt pin1");
+                self.pt_pin_2.set_direction(Direction::Low).expect("Failed to set direction on pt pin2");
+            },
+            3 => {
+                self.pt_pin_1.set_direction(Direction::Low).expect("Failed to set direction on pt pin1");
+                self.pt_pin_2.set_direction(Direction::Low).expect("Failed to set direction on pt pin2");
+            },
+            _ => {
+                // Default to .5 A
+                self.pt_pin_1.set_direction(Direction::In).expect("Failed to set direction on pt1 pin");
+                self.pt_pin_2.set_direction(Direction::In).expect("Failed to set direction on pt2 pin");
+            }
         }
     }
 
@@ -151,36 +157,30 @@ impl Motor {
         self.dir_pin.export().expect("Failed to export DIR pin");
         self.step_pin.export().expect("Failed to export STEP pin");
         self.power_pin.export().expect("Failed to export PWR pin");
-        match &self.pt_pin_1 {
-            Some(p) => {
-                println!("<<<< SETTINT PT PINS");
-                p.export().expect("Failed to export pt1");
-                self.pt_pin_2.as_ref().unwrap().export().expect("Failed to export pt2")
-            },
-            _ => println!("No pt pins")
 
-        }
+        self.pt_pin_1.export().expect("Failed to export pt1");
+        self.pt_pin_2.export().expect("Failed to export pt2");
+
+
+        println!("all things exported");
         // Sleep a moment to allow the pin privileges to update
         sleep(Duration::from_millis(80));
 
-        self.step_pin.set_direction(Direction::Out).expect("Failed to set direction on set pin");
-        self.dir_pin.set_direction(Direction::Out).expect("Failed to set direction on direction pin");
-        self.power_pin.set_direction(Direction::Out).expect("Failed to set direction on power pin");
+        self.step_pin.set_direction(Direction::Low).expect("Failed to set direction on set pin");
+        self.dir_pin.set_direction(Direction::Low).expect("Failed to set direction on direction pin");
+        self.power_pin.set_direction(Direction::Low).expect("Failed to set direction on power pin");
+        // PT pins default to input mode
+        self.set_potentiometer(0);
 
         //TODO revisit this
-        self.setPotentiometer(0);
+        // self.set_potentiometer(0);
     }
     pub fn done(&self) {
         self.dir_pin.unexport().expect("Failed to un un export DIR pin");
         self.step_pin.unexport().expect("Failed to un un export STEP pin");
         self.power_pin.unexport().expect("Failed to un un export PWR pin");
-        match &self.pt_pin_1 {
-            Some(p) => {
-                p.unexport().expect("Failed to un export pt1");
-                self.pt_pin_2.as_ref().unwrap().unexport().expect("Failed to un export pt2");
-            },
-            _ => println!("No pt pins")
-        }
+        self.pt_pin_1.unexport().expect("Failed to un export pt2");
+        self.pt_pin_2.unexport().expect("Failed to un export pt2");
     }
 
     #[allow(dead_code)]
