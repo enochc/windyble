@@ -153,6 +153,7 @@ impl Motor {
         self.power_pin.export().expect("Failed to export PWR pin");
         match &self.pt_pin_1 {
             Some(p) => {
+                println!("<<<< SETTINT PT PINS");
                 p.export().expect("Failed to export pt1");
                 self.pt_pin_2.as_ref().unwrap().export().expect("Failed to export pt2")
             },
