@@ -81,18 +81,16 @@ impl Motor {
         self.pt_pin_2 = Some(pt2);
     }
 
-    fn power_motor(&self, on:bool) {
-        let val = if on {1} else {0};
-        self.power_pin.set_value(val).expect("Failed to change motor power");
-
-        // set potentiometer
-        /*
-        p1	p2	Current Limit  is Z high?
-        Z	Z	0.5 A
-        Low	Z	1 A
-        Z	Low	1.5 A
-        Low	Low	2 A
-         */
+    // TODO this only sets to lowest value... I think
+    // set potentiometer
+    /*
+    p1	p2	Current Limit  is Z high?
+    Z	Z	0.5 A
+    Low	Z	1 A
+    Z	Low	1.5 A
+    Low	Low	2 A
+     */
+    pub fn setPotentiometer(&self, pt_val:i8){
         match &self.pt_pin_1 {
             Some(p) => {
                 p.set_value(1).expect("Failed to set Pt1 pin value");
@@ -102,6 +100,11 @@ impl Motor {
             },
             _ => {println!("No potentiometer pins")}
         }
+    }
+
+    fn power_motor(&self, on:bool) {
+        let val = if on {1} else {0};
+        self.power_pin.set_value(val).expect("Failed to change motor power");
     }
 
 
@@ -162,6 +165,9 @@ impl Motor {
         self.step_pin.set_direction(Direction::Out).expect("Failed to set direction on set pin");
         self.dir_pin.set_direction(Direction::Out).expect("Failed to set direction on direction pin");
         self.power_pin.set_direction(Direction::Out).expect("Failed to set direction on power pin");
+
+        //TODO revisit this
+        self.setPotentiometer(0);
     }
     pub fn done(&self) {
         self.dir_pin.unexport().expect("Failed to un un export DIR pin");
