@@ -19,6 +19,10 @@ const STEP: u64 = 26; // purple
 const DIR: u64 = 19; //While
 const POWER_RELAY_PIN:u64 = 13;
 
+// Potentiometer pins // 5=1, 6=2
+const PT1: u64 = 5;
+const PT2: u64 = 6;
+
 struct Dir;
 
 impl Dir {
@@ -47,7 +51,8 @@ fn main() {
     let dir_pin = MyPin::new(DIR, is_test);
     let power_pin = MyPin::new(POWER_RELAY_PIN, is_test);
 
-    let motor = Motor::new(step_pin, dir_pin, power_pin, is_test);
+    let mut motor = Motor::new(step_pin, dir_pin, power_pin, is_test);
+    motor.set_pt_pins(MyPin::new(PT1, is_test), MyPin::new(PT2, is_test));
 
     // let move_up_clone = move_up.clone();
     let up_pair = Arc::new((Mutex::new(false), Condvar::new()));

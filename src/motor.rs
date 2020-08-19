@@ -7,7 +7,6 @@ use std::sync::atomic::{AtomicBool, Ordering, AtomicU64};
 use std::thread;
 use async_std::sync::Arc;
 
-// use async_std::task::JoinHandle;
 
 #[derive(Clone)]
 pub struct Motor {
@@ -19,6 +18,8 @@ pub struct Motor {
     direction: u8,
     is_turning: bool,
     step_duration: Arc<AtomicU64>,
+    pt_pin_1: Option<MyPin>,
+    pt_pin_2: Option<MyPin>,
 }
 
 // impl Clone for Motor {
@@ -69,13 +70,38 @@ impl Motor {
             // turn_delay: Duration::from_secs(1),
             direction: Dir::CLOCKWISE,
             is_turning: false,
-            step_duration: Arc::new(AtomicU64::new(u64::from(SPEED_MAX - SPEED_MIN / 2)))
+            step_duration: Arc::new(AtomicU64::new(u64::from(SPEED_MAX - SPEED_MIN / 2))),
+            pt_pin_1:None,
+            pt_pin_2:None,
         };
+    }
+
+    pub fn set_pt_pins(&mut self, pt1:MyPin, pt2:MyPin){
+        self.pt_pin_1 = Some(pt1);
+        self.pt_pin_2 = Some(pt2);
     }
 
     fn power_motor(&self, on:bool) {
         let val = if on {1} else {0};
         self.power_pin.set_value(val).expect("Failed to change motor power");
+
+        // set potentiometer
+        /*
+        p1	p2	Current Limit  is Z high?
+        Z	Z	0.5 A
+        Low	Z	1 A
+        Z	Low	1.5 A
+        Low	Low	2 A
+         */
+        match &self.pt_pin_1 {
+            Some(p) => {
+                p.set_value(1).expect("Failed to set Pt1 pin value");
+                // if pt1 exists, so does pt1
+                self.pt_pin_2.as_ref().unwrap().set_value(1).expect("Failed to set Pt2 pin value");
+                println!("Set pt pins High (for low amperage)")
+            },
+            _ => {println!("No potentiometer pins")}
+        }
     }
 
 
@@ -84,7 +110,9 @@ impl Motor {
             println!("Already turning!");
             return None::<Arc<AtomicBool>>;
         }
+
         self.power_motor(true);
+
         let running = Arc::new(AtomicBool::new(true));
         let running_clone = running.clone();
         self.set_direction(dir);
