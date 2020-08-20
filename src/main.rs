@@ -45,7 +45,7 @@ fn main() {
     [Properties]
     moveup = false
     movedown = false
-    speed = 1000
+    speed = 500
     pt = 0
     ", addr);
 
