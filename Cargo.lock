@@ -185,6 +185,7 @@ dependencies = [
  "async-std",
  "futures",
  "hive",
+ "local_ipaddress",
  "smol 0.3.3",
  "sysfs_gpio",
 ]
@@ -551,6 +552,12 @@ name = "linked-hash-map"
 version = "0.5.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8dd5a6d5999d9907cda8ed67bbd137d3af8085216c2ac62de5be860bd41f304a"
+
+[[package]]
+name = "local_ipaddress"
+version = "0.1.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f6a104730949fbc4c78e4fa98ed769ca0faa02e9818936b61032d2d77526afa9"
 
 [[package]]
 name = "log"

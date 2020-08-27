@@ -11,6 +11,8 @@ sysfs_gpio = "0.5"
 futures = "0.3.5"
 hive = { git = 'https://github.com/enochc/hive', branch = 'new_master' , version = "0.1.300"}
 async-std = "1.6.2"
+local_ipaddress = "0.1.3"
+# LOCAL_IPADDRESS 0.1.3
 #runtime = "0.3.0-alpha.8"
 
 # testing

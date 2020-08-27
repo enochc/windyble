@@ -13,11 +13,14 @@ use futures::executor::block_on;
 use crate::my_pin::MyPin;
 use crate::motor::Motor;
 use std::{thread, env};
+use local_ipaddress;
 
 
-const STEP: u64 = 26; // purple
-const DIR: u64 = 19; //While
-const POWER_RELAY_PIN:u64 = 13;
+const STEP: u64 = 26;
+// purple
+const DIR: u64 = 19;
+//While
+const POWER_RELAY_PIN: u64 = 13;
 
 // Potentiometer pins // 5=1, 6=2
 const PT1: u64 = 16;
@@ -30,24 +33,61 @@ impl Dir {
     const COUNTER_CLOCKWISE: u8 = 0;
 }
 
-
 fn main() {
+    /// Default action is to listen on 127.0.0.1:3000 unless specified otherweise
+    /// when connecting, it inherits properties from the server
+    ///
+    /// # Examples
+    ///
+    /// ```
+    ///     board test listen 127.0.0.1:3000
+    ///     board test connect 192.168.0.43:3000
+    /// ```
     let args: Vec<String> = env::args().collect();
     let is_test = args.contains(&String::from("test"));
+    let mut action = "";
+    let mut addr = local_ipaddress::get().unwrap();
 
-    let addr = if is_test { "127.0.0.1:3000" } else { "192.168.5.41:3000" };
+    for (i, name) in args.iter().enumerate() {
+        if name == "connect" || name == "listen" {
+            action = name;
+            let adr_val = args.get(i + 1);
+            if adr_val.is_none() && addr.is_empty() {
+                eprintln!("No address specified for action {}", action);
+                return;
+            } else {
+                if adr_val.is_some() {
+                    if adr_val.unwrap().len() <= 6 {
+                        // it's just a port number
+                        addr = format!("{}:{}", addr, adr_val.unwrap());
+                    } else {
+                        addr = String::from(adr_val.unwrap());
+                    }
+                }
+                println!("{}ing to: {:?}", action, addr);
+                break;
+            }
+        }
+    }
 
     /*
     pt is 0,1,2,3 potentiometer limiting for the motor 0.5 A, 1 A, 1.5 A, 2 A
      */
-    let hive_props = format!("
+    let hive_props = match action {
+        "connect" => { format!("{} = {:?}", action, addr) }
+        _ => {
+            format!("
     listen = {:?}
     [Properties]
     moveup = false
     movedown = false
     speed = 500
     pt = 0
-    ", addr);
+    ", addr)
+        }
+    };
+
+    println!("{}", hive_props);
 
     let mut pi_hive = Hive::new_from_str("SERVE", hive_props.as_str());
 
@@ -63,7 +103,7 @@ fn main() {
         power_pin,
         pt_pin_1,
         pt_pin_2,
-        is_test
+        is_test,
     );
 
     // let move_up_clone = move_up.clone();
@@ -111,7 +151,7 @@ fn main() {
         cvar.notify_one();
     });
 
-    thread::spawn( move ||{
+    thread::spawn(move || {
         block_on(pi_hive.run());
     });
 

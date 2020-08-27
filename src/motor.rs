@@ -37,6 +37,7 @@ pub struct Motor {
 
 const SPEED_MIN:u64 = 350;
 const SPEED_MAX:u64 = 1_500;
+const DEFAULT_DURATION:u64 = 500;
 
 
 
@@ -60,7 +61,7 @@ impl Motor {
         let duration = if is_test {
             Duration::from_secs(1)
         }else{
-            Duration::from_micros(1_000)
+            Duration::from_micros(DEFAULT_DURATION)
         };
         return Motor {
             step_pin,
