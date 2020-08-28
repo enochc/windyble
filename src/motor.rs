@@ -163,7 +163,6 @@ impl Motor {
         self.pt_pin_2.export().expect("Failed to export pt2");
 
 
-        println!("all things exported");
         // Sleep a moment to allow the pin privileges to update
         sleep(Duration::from_millis(80));
 

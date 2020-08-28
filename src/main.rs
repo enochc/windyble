@@ -40,7 +40,7 @@ fn main() {
     /// # Examples
     ///
     /// ```
-    ///     board test listen 127.0.0.1:3000
+    ///     board test listen 3000
     ///     board test connect 192.168.0.43:3000
     /// ```
     let args: Vec<String> = env::args().collect();
@@ -73,19 +73,14 @@ fn main() {
     /*
     pt is 0,1,2,3 potentiometer limiting for the motor 0.5 A, 1 A, 1.5 A, 2 A
      */
-    let hive_props = match action {
-        "connect" => { format!("{} = {:?}", action, addr) }
-        _ => {
-            format!("
-    listen = {:?}
+    let hive_props = format!("
+    {} = {:?}
     [Properties]
     moveup = false
     movedown = false
     speed = 500
     pt = 0
-    ", addr)
-        }
-    };
+    ", action, addr);
 
     println!("{}", hive_props);
 
