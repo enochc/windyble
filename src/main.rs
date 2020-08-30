@@ -26,6 +26,9 @@ const POWER_RELAY_PIN: u64 = 13;
 const PT1: u64 = 16;
 const PT2: u64 = 20;
 
+const IS_UP_PIN: u64 = 5;
+const IS_DOWN_PIN: u64 = 6;
+
 struct Dir;
 
 impl Dir {
@@ -90,6 +93,8 @@ fn main() {
     let power_pin = MyPin::new(POWER_RELAY_PIN, is_test);
     let pt_pin_1 = MyPin::new(PT1, is_test);
     let pt_pin_2 = MyPin::new(PT2, is_test);
+    let is_up_pin = Some(MyPin::new(IS_UP_PIN, is_test));
+    let is_down_pin = Some(MyPin::new(IS_DOWN_PIN, is_test));
 
     let motor = Motor::new(
         step_pin,
@@ -97,6 +102,8 @@ fn main() {
         power_pin,
         pt_pin_1,
         pt_pin_2,
+        is_up_pin,
+        is_down_pin,
         is_test,
     );
 

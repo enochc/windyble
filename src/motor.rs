@@ -7,6 +7,10 @@ use std::sync::atomic::{AtomicBool, Ordering, AtomicU64};
 use std::thread;
 use async_std::sync::Arc;
 
+/// How many motor pulses we're willing to overlook before we stop the motor
+/// if the open/closed switches get triggered
+/// This is to prevent us from having to check the gpio status at every pulse
+const STOP_BUFFER: u32 = 30;
 
 #[derive(Clone)]
 pub struct Motor {
@@ -15,9 +19,9 @@ pub struct Motor {
     power_pin: MyPin,
     pt_pin_1: MyPin,
     pt_pin_2: MyPin,
+    is_up_pin: Option<MyPin>,
+    is_down_pin: Option<MyPin>,
     turn_delay: Duration,
-    // todo I can read the pin value for direction, I don't need this property
-    direction: u8,
     is_turning: bool,
     step_duration: Arc<AtomicU64>,
 }
@@ -35,10 +39,9 @@ pub struct Motor {
 //     }
 // }
 
-const SPEED_MIN:u64 = 350;
-const SPEED_MAX:u64 = 1_000;
-pub const DEFAULT_DURATION:u64 = 500;
-
+const SPEED_MIN: u64 = 350;
+const SPEED_MAX: u64 = 1_000;
+pub const DEFAULT_DURATION: u64 = 500;
 
 
 impl Motor {
@@ -46,9 +49,8 @@ impl Motor {
        Speed value is a percentage 0 to
        returns microseconds, 1,000,000 in a sec
     */
-    pub fn set_speed(& self, val:u64) {
-
-        let speed = (((SPEED_MAX - SPEED_MIN)/ 100) * val) + SPEED_MIN;
+    pub fn set_speed(&self, val: u64) {
+        let speed = (((SPEED_MAX - SPEED_MIN) / 100) * val) + SPEED_MIN;
         println!("<<<<<< set speed {}, {}", val, speed);
         self.step_duration.store(speed, Ordering::SeqCst);
     }
@@ -58,10 +60,18 @@ impl Motor {
         return self.power_pin.get_value().unwrap() == 0;
     }
 
-    pub fn new(step_pin: MyPin, dir_pin: MyPin, power_pin: MyPin, pt_pin_1:MyPin, pt_pin_2:MyPin, is_test:bool) -> Motor {
+    pub fn new(step_pin: MyPin,
+               dir_pin: MyPin,
+               power_pin: MyPin,
+               pt_pin_1: MyPin,
+               pt_pin_2: MyPin,
+               is_up_pin: Option<MyPin>,
+               is_down_pin: Option<MyPin>,
+               is_test: bool) -> Motor
+    {
         let duration = if is_test {
             Duration::from_secs(1)
-        }else{
+        } else {
             Duration::from_micros(DEFAULT_DURATION)
         };
         return Motor {
@@ -70,9 +80,9 @@ impl Motor {
             power_pin,
             pt_pin_1,
             pt_pin_2,
+            is_up_pin,
+            is_down_pin,
             turn_delay: duration,
-            // turn_delay: Duration::from_secs(1),
-            direction: Dir::CLOCKWISE,
             is_turning: false,
             step_duration: Arc::new(AtomicU64::new(u64::from(SPEED_MAX - SPEED_MIN / 2))),
 
@@ -88,20 +98,20 @@ impl Motor {
     Z	Low	1.5 A
     Low	Low	2 A
      */
-    pub fn set_potentiometer(&self, pt_val:i64){
+    pub fn set_potentiometer(&self, pt_val: i64) {
         match pt_val {
             1 => {
                 self.pt_pin_1.set_direction(Direction::Low).expect("Failed to set direction on pt pin1");
                 self.pt_pin_2.set_direction(Direction::In).expect("Failed to set direction on pt pin2");
-            },
+            }
             2 => {
                 self.pt_pin_1.set_direction(Direction::In).expect("Failed to set direction on pt pin1");
                 self.pt_pin_2.set_direction(Direction::Low).expect("Failed to set direction on pt pin2");
-            },
+            }
             3 => {
                 self.pt_pin_1.set_direction(Direction::Low).expect("Failed to set direction on pt pin1");
                 self.pt_pin_2.set_direction(Direction::Low).expect("Failed to set direction on pt pin2");
-            },
+            }
             _ => {
                 // Default to .5 A
                 self.pt_pin_1.set_direction(Direction::In).expect("Failed to set direction on pt1 pin");
@@ -110,15 +120,15 @@ impl Motor {
         }
     }
 
-    fn power_motor(&self, on:bool) {
+    fn power_motor(&self, on: bool) {
         let num = self.power_pin.number;
-        println!("switching motor ({:?}) {}",num, if on {"on"}else{"off"});
-        let val = if on {1} else {0};
+        println!("switching motor ({:?}) {}", num, if on { "on" } else { "off" });
+        let val = if on { 1 } else { 0 };
         self.power_pin.set_value(val).expect("Failed to change motor power");
     }
 
 
-    pub fn turn(&mut self, dir: u8)->Option<Arc<AtomicBool>> {
+    pub fn turn(&mut self, dir: u8) -> Option<Arc<AtomicBool>> {
         if self.is_turning {
             println!("Already turning!");
             return None::<Arc<AtomicBool>>;
@@ -133,7 +143,7 @@ impl Motor {
         let clone = self.clone();
         println!("<<<< .... TURN AWAY: {:?} .... >>>>", clone.step_duration);
         let speed = self.step_duration.load(Ordering::SeqCst);
-        thread::spawn(move ||{
+        thread::spawn(move || {
             while running_clone.load(Ordering::SeqCst) {
                 clone.step_pin.set_value(1).unwrap();
                 sleep(Duration::from_micros(speed));
@@ -155,7 +165,6 @@ impl Motor {
 
     pub fn set_direction(&mut self, dir: u8) {
         println!("........ SET DIRECTION {:?}", dir);
-        self.direction = dir;
         self.dir_pin.set_value(dir).expect("Failed to set direction");
     }
 
