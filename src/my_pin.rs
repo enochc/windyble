@@ -4,8 +4,8 @@ use sysfs_gpio::{Direction, Pin, Error};
 #[derive(Clone)]
 pub struct MyPin {
     pin: Option<Pin>,
-    number:u64,
-    is_test:bool
+    pub number:u64,
+    pub is_test:bool
 }
 
 impl MyPin {

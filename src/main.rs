@@ -32,17 +32,16 @@ impl Dir {
     const CLOCKWISE: u8 = 1;
     const COUNTER_CLOCKWISE: u8 = 0;
 }
-
+/// Default action is to listen on 127.0.0.1:3000 unless specified otherweise
+/// when connecting, it inherits properties from the server
+///
+/// # Examples
+///
+/// ```
+///     board test listen 3000
+///     board test connect 192.168.0.43:3000
+/// ```
 fn main() {
-    /// Default action is to listen on 127.0.0.1:3000 unless specified otherweise
-    /// when connecting, it inherits properties from the server
-    ///
-    /// # Examples
-    ///
-    /// ```
-    ///     board test listen 3000
-    ///     board test connect 192.168.0.43:3000
-    /// ```
     let args: Vec<String> = env::args().collect();
     let is_test = args.contains(&String::from("test"));
     let mut action = "";
@@ -64,7 +63,7 @@ fn main() {
                         addr = String::from(adr_val.unwrap());
                     }
                 }
-                println!("{}ing to: {:?}", action, addr);
+                println!("{}ing to: {:?}, is test: {:?}", action, addr, is_test);
                 break;
             }
         }
@@ -78,9 +77,9 @@ fn main() {
     [Properties]
     moveup = false
     movedown = false
-    speed = 500
+    speed = {}
     pt = 0
-    ", action, addr);
+    ", action, addr, motor::DEFAULT_DURATION);
 
     println!("{}", hive_props);
 
@@ -179,18 +178,23 @@ fn main() {
 
     task::spawn(async move {
         let (lock, cvar) = &*up_pair;
-        let mut upping = lock.lock().unwrap();
+        let mut turning = lock.lock().unwrap();
 
-        while !*upping {
-            upping = cvar.wait(upping).unwrap();
+        while !*turning {
+            //we wait until we receive a turn message
+            turning = cvar.wait(turning).unwrap();
             let dir = current_dir.load(Ordering::SeqCst);
             let running = motor_clone.turn(dir);
-            println!("<< GO UP {:?}", upping);
-            while *upping {
-                upping = cvar.wait(upping).unwrap();
-                println!("<< Stop {:?}", upping);
-                running.unwrap().store(false, Ordering::SeqCst);
+
+            println!("<< TURNING {:?}", turning);
+            while *turning {
+                //we wait until we receive a stop turn message
+                turning = cvar.wait(turning).unwrap();
+                println!("<< Stop {:?}", turning);
                 motor_clone.stop();
+                running.unwrap().store(false, Ordering::SeqCst);
+
+                // TODO I'm not sure this is neccessary
                 break;
             }
         }
@@ -201,7 +205,6 @@ fn main() {
     // We wait here... forever
     let done = block_on(receiver.next());
     assert_eq!(1, done.unwrap());
-
 
     motor.done();
 

@@ -36,8 +36,8 @@ pub struct Motor {
 // }
 
 const SPEED_MIN:u64 = 350;
-const SPEED_MAX:u64 = 1_500;
-const DEFAULT_DURATION:u64 = 500;
+const SPEED_MAX:u64 = 1_000;
+pub const DEFAULT_DURATION:u64 = 500;
 
 
 
@@ -55,8 +55,9 @@ impl Motor {
 
     #[allow(dead_code)]
     fn is_on(&self) -> bool {
-        return self.power_pin.get_value().unwrap() == 1;
+        return self.power_pin.get_value().unwrap() == 0;
     }
+
     pub fn new(step_pin: MyPin, dir_pin: MyPin, power_pin: MyPin, pt_pin_1:MyPin, pt_pin_2:MyPin, is_test:bool) -> Motor {
         let duration = if is_test {
             Duration::from_secs(1)
@@ -110,6 +111,8 @@ impl Motor {
     }
 
     fn power_motor(&self, on:bool) {
+        let num = self.power_pin.number;
+        println!("switching motor ({:?}) {}",num, if on {"on"}else{"off"});
         let val = if on {1} else {0};
         self.power_pin.set_value(val).expect("Failed to change motor power");
     }
@@ -143,6 +146,7 @@ impl Motor {
     }
 
     pub fn stop(&mut self) {
+        println!("....... STOP");
         self.is_turning = false;
         self.step_pin.set_value(0).unwrap();
         self.power_motor(false);
@@ -150,6 +154,7 @@ impl Motor {
 
 
     pub fn set_direction(&mut self, dir: u8) {
+        println!("........ SET DIRECTION {:?}", dir);
         self.direction = dir;
         self.dir_pin.set_value(dir).expect("Failed to set direction");
     }
@@ -168,12 +173,9 @@ impl Motor {
 
         self.step_pin.set_direction(Direction::Low).expect("Failed to set direction on set pin");
         self.dir_pin.set_direction(Direction::Low).expect("Failed to set direction on direction pin");
-        self.power_pin.set_direction(Direction::Low).expect("Failed to set direction on power pin");
         // PT pins default to input mode
         self.set_potentiometer(0);
-
-        //TODO revisit this
-        // self.set_potentiometer(0);
+        self.power_motor(false);
     }
     pub fn done(&self) {
         self.dir_pin.unexport().expect("Failed to un un export DIR pin");
