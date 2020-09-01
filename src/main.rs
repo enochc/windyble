@@ -1,31 +1,29 @@
-mod motor;
-mod my_pin;
-
-use hive::hive::Hive;
-use async_std::task;
-use async_std::sync::{Arc};
+use std::{env, thread};
 use std::sync::{Condvar, Mutex};
-use std::sync::atomic::{Ordering, AtomicU8};
-
-use futures::channel::mpsc;
-use futures::{SinkExt, StreamExt};
-use futures::executor::block_on;
-use crate::my_pin::MyPin;
-use crate::motor::Motor;
-use std::{thread, env};
-use local_ipaddress;
-use sysfs_gpio::{Pin, Direction};
+use std::sync::atomic::{AtomicU8, Ordering};
 use std::thread::sleep;
 use std::time::Duration;
 
+use async_std::sync::Arc;
+use async_std::task;
+use futures::executor::block_on;
+use hive::hive::Hive;
+use local_ipaddress;
+use sysfs_gpio::{Direction, Pin};
+
+use crate::motor::Motor;
+use crate::my_pin::MyPin;
+
+mod motor;
+mod my_pin;
 
 const STEP: u64 = 26;
 // purple
 const DIR: u64 = 19;
-//While
+// While
 const POWER_RELAY_PIN: u64 = 13;
 
-// Potentiometer pins // 5=1, 6=2
+// Potentiometer pins
 const PT1: u64 = 16;
 const PT2: u64 = 20;
 
@@ -44,6 +42,7 @@ struct MoveState {
     up: u8,
     down: u8,
 }
+
 const MOVE_STATE: MoveState = MoveState {
     free: 0,
     up: 1,
@@ -112,7 +111,7 @@ fn main() {
     let is_up_pin = Some(MyPin::new(IS_UP_PIN, is_test));
     let is_down_pin = Some(MyPin::new(IS_DOWN_PIN, is_test));
 
-    let motor = Motor::new(
+    let mut motor = Motor::new(
         step_pin,
         dir_pin,
         power_pin,
@@ -132,7 +131,7 @@ fn main() {
 
     let up_pair_clone = up_pair.clone();
     let current_move_state_clone = current_move_state.clone();
-    start_input_listener(IS_UP_PIN, move |v|{
+    start_input_listener(IS_UP_PIN, move |v| {
         println!("VAL {:?} is {:?}", IS_UP_PIN, v);
         let (lock, cvar) = &*up_pair_clone;
         let mut going_up = lock.lock().unwrap();
@@ -148,7 +147,7 @@ fn main() {
 
     let current_move_state_clone = current_move_state.clone();
     let up_pair_clone = up_pair.clone();
-    start_input_listener(IS_DOWN_PIN, move|v|{
+    start_input_listener(IS_DOWN_PIN, move |v| {
         println!("VAL {:?} is {:?}", IS_DOWN_PIN, v);
         let (lock, cvar) = &*up_pair_clone;
         let mut going_down = lock.lock().unwrap();
@@ -214,11 +213,9 @@ fn main() {
     });
 
     motor.init();
-    let mut motor_clone = motor.clone();
-    let motor_clone2 = motor.clone();
-    let motor_clone3 = motor.clone();
 
     // Handler for potentiometer
+    let motor_clone3 = motor.clone();
     task::spawn(async move {
         let (lock, cvar) = &*pt_val_pair;
         let mut pt = lock.lock().unwrap();
@@ -230,6 +227,7 @@ fn main() {
 
     // Handler for speed
     // todo task::spawn here doesn't work.. figure out why
+    let motor_clone2 = motor.clone();
     thread::spawn(move || {
         let (lock, cvar) = &*speed_pair;
         let mut speed = lock.lock().unwrap();
@@ -239,55 +237,44 @@ fn main() {
         };
     });
 
-    let (mut sender, mut receiver) = mpsc::unbounded();
+    let (lock, cvar) = &*up_pair;
+    let mut turning = lock.lock().unwrap();
 
-    
-    task::spawn(async move {
-        let (lock, cvar) = &*up_pair;
-        let mut turning = lock.lock().unwrap();
+    // Loops forever !!!
+    // let mut motor_clone = motor.clone();
+    while !*turning {
+        //we wait until we receive a turn message
+        turning = cvar.wait(turning).unwrap();
+        if *turning {
+            let dir = current_dir.load(Ordering::SeqCst);
+            let running = motor.turn(dir);
 
-        while !*turning {
-            //we wait until we receive a turn message
-            turning = cvar.wait(turning).unwrap();
-            if *turning {
-                let dir = current_dir.load(Ordering::SeqCst);
-                let running = motor_clone.turn(dir);
-
-                println!("<< TURNING {:?}", turning);
-                while *turning {
-                    //we wait until we receive a stop turn message
-                    turning = cvar.wait(turning).unwrap();
-                    if !*turning {
-                        println!("<< Stop {:?}", turning);
-                        motor_clone.stop();
-                        running.unwrap().store(false, Ordering::SeqCst);
-                    }
-
-                    // TODO I'm not sure this is neccessary
-                    break;
+            println!("<< TURNING {:?}", turning);
+            while *turning {
+                //we wait until we receive a stop turn message
+                turning = cvar.wait(turning).unwrap();
+                if !*turning {
+                    motor.stop();
+                    running.unwrap().store(false, Ordering::SeqCst);
                 }
+
+                break;
             }
-
         }
-        // TODO why does appending an await on the line below, break everything?
-        sender.send(1).await;
-        Ok(())
-    });
+    }
 
-    // We wait here... forever
-    let done = block_on(receiver.next());
-    assert_eq!(1, done.unwrap());
-
+    // this never runs, the pins are never exported because the only way to end this loop
+    // Is to kill the service
     motor.done();
 
-    println!("Done");
+    println!("Main Done");
 }
 
 // TODO this works well enough as is, but is not the best solution. preferably we should
 //  start a single thread and run each listeners in a task instead of starting a new thread
 //  for every input
-fn start_input_listener(num:u64, func: impl Fn(u8) +Send+Sync +'static){
-    thread::spawn( move ||{
+fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
+    thread::spawn(move || {
         let input = Pin::new(num);
         input.with_exported(|| {
             input.set_direction(Direction::In)?;

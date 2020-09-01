@@ -149,7 +149,7 @@ impl Motor {
                 clone.step_pin.set_value(0).unwrap();
                 sleep(Duration::from_micros(speed));
             }
-            println!("DONE");
+            println!("Motor Done turning");
         });
         return Some(running);
     }
@@ -162,7 +162,7 @@ impl Motor {
     }
 
 
-    pub fn set_direction(&mut self, dir: u8) {
+    pub fn set_direction(&self, dir: u8) {
         println!("........ SET DIRECTION {:?}", dir);
         self.dir_pin.set_value(dir).expect("Failed to set direction");
     }
@@ -188,10 +188,7 @@ impl Motor {
         self.set_potentiometer(0);
         self.power_pin.set_direction(Direction::Out).expect("Failed to set direction on Power pin");
         self.power_motor(false);
-
-
     }
-
 
 
     pub fn done(&self) {
@@ -233,6 +230,4 @@ impl Motor {
     //         }
     //     })
     // }
-
-
 }
