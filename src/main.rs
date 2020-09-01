@@ -249,16 +249,16 @@ fn main() {
             let dir = current_dir.load(Ordering::SeqCst);
             let running = motor.turn(dir);
 
-            println!("<< TURNING {:?}", turning);
             while *turning {
                 //we wait until we receive a stop turn message
                 turning = cvar.wait(turning).unwrap();
                 if !*turning {
                     motor.stop();
                     running.unwrap().store(false, Ordering::SeqCst);
+                    break;
                 }
 
-                break;
+
             }
         }
     }
@@ -266,7 +266,6 @@ fn main() {
     // this never runs, the pins are never exported because the only way to end this loop
     // Is to kill the service
     motor.done();
-
     println!("Main Done");
 }
 
