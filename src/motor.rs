@@ -1,16 +1,15 @@
+extern crate sysfs_gpio;
+
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
+use std::thread;
 use std::thread::sleep;
 use std::time::Duration;
-use crate::{Dir};
-use crate::my_pin::MyPin;
-use sysfs_gpio::Direction;
-use std::sync::atomic::{AtomicBool, Ordering, AtomicU64};
-use std::thread;
+
 use async_std::sync::Arc;
 
-/// How many motor pulses we're willing to overlook before we stop the motor
-/// if the open/closed switches get triggered
-/// This is to prevent us from having to check the gpio status at every pulse
-const STOP_BUFFER: u32 = 30;
+use crate::my_pin::MyPin;
+
+use self::sysfs_gpio::{Direction};
 
 #[derive(Clone)]
 pub struct Motor {
@@ -176,6 +175,9 @@ impl Motor {
         self.pt_pin_1.export().expect("Failed to export pt1");
         self.pt_pin_2.export().expect("Failed to export pt2");
 
+        self.is_up_pin.as_ref().unwrap().export().expect("Failed to export pt2");
+        self.is_down_pin.as_ref().unwrap().export().expect("Failed to export pt2");
+
 
         // Sleep a moment to allow the pin privileges to update
         sleep(Duration::from_millis(80));
@@ -184,14 +186,23 @@ impl Motor {
         self.dir_pin.set_direction(Direction::Low).expect("Failed to set direction on direction pin");
         // PT pins default to input mode
         self.set_potentiometer(0);
+        self.power_pin.set_direction(Direction::Out).expect("Failed to set direction on Power pin");
         self.power_motor(false);
+
+
     }
+
+
+
     pub fn done(&self) {
         self.dir_pin.unexport().expect("Failed to un un export DIR pin");
         self.step_pin.unexport().expect("Failed to un un export STEP pin");
         self.power_pin.unexport().expect("Failed to un un export PWR pin");
         self.pt_pin_1.unexport().expect("Failed to un export pt2");
         self.pt_pin_2.unexport().expect("Failed to un export pt2");
+
+        self.is_up_pin.as_ref().unwrap().unexport().expect("Failed to unexport up");
+        self.is_down_pin.as_ref().unwrap().unexport().expect("Failed to unexport down");
     }
 
     #[allow(dead_code)]
@@ -205,4 +216,23 @@ impl Motor {
         }
         self.power_motor(false);
     }
+
+
+    // fn poll(&self, pin_num: u64) -> sysfs_gpio::Result<()> {
+    //     let input = Pin::new(pin_num);
+    //     input.with_exported(|| {
+    //         input.set_direction(Direction::In)?;
+    //         let mut prev_val: u8 = 255;
+    //         loop {
+    //             let val = input.get_value()?;
+    //             if val != prev_val {
+    //                 println!("Pin State: {}", if val == 0 { "Low" } else { "High" });
+    //                 prev_val = val;
+    //             }
+    //             sleep(Duration::from_millis(10));
+    //         }
+    //     })
+    // }
+
+
 }

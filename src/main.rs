@@ -14,6 +14,9 @@ use crate::my_pin::MyPin;
 use crate::motor::Motor;
 use std::{thread, env};
 use local_ipaddress;
+use sysfs_gpio::{Pin, Direction};
+use std::thread::sleep;
+use std::time::Duration;
 
 
 const STEP: u64 = 26;
@@ -35,6 +38,18 @@ impl Dir {
     const CLOCKWISE: u8 = 1;
     const COUNTER_CLOCKWISE: u8 = 0;
 }
+
+struct MoveState {
+    free: u8,
+    up: u8,
+    down: u8,
+}
+const MOVE_STATE: MoveState = MoveState {
+    free: 0,
+    up: 1,
+    down: 2,
+};
+
 /// Default action is to listen on 127.0.0.1:3000 unless specified otherweise
 /// when connecting, it inherits properties from the server
 ///
@@ -49,6 +64,7 @@ fn main() {
     let is_test = args.contains(&String::from("test"));
     let mut action = "";
     let mut addr = local_ipaddress::get().unwrap();
+    let current_move_state = Arc::new(AtomicU8::new(MOVE_STATE.free));
 
     for (i, name) in args.iter().enumerate() {
         if name == "connect" || name == "listen" {
@@ -107,21 +123,46 @@ fn main() {
         is_test,
     );
 
-    // let move_up_clone = move_up.clone();
-    let up_pair = Arc::new((Mutex::new(false), Condvar::new()));
-    let up_pair2 = up_pair.clone();
-    let up_pair3 = up_pair.clone();
 
-    let speed_pair = Arc::new((Mutex::new(0), Condvar::new()));
-    let speed_clone = speed_pair.clone();
+    let up_pair: Arc<(Mutex<bool>, Condvar)> = Arc::new((Mutex::new(false), Condvar::new()));
+    let speed_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
+    let pt_val_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
 
-    let pt_val_pair = Arc::new((Mutex::new(0), Condvar::new()));
-    let pt_val_clone = pt_val_pair.clone();
+    let current_dir: Arc<AtomicU8> = Arc::new(AtomicU8::new(0));
 
-    let current_dir = Arc::new(AtomicU8::new(0));
-    let current_dir_clone = current_dir.clone();
-    let current_dir_clone2 = current_dir.clone();
+    let up_pair_clone = up_pair.clone();
+    let current_move_state_clone = current_move_state.clone();
+    start_input_listener(IS_UP_PIN, move |v|{
+        println!("VAL {:?} is {:?}", IS_UP_PIN, v);
+        let (lock, cvar) = &*up_pair_clone;
+        let mut going_up = lock.lock().unwrap();
+        if v == 1 {
+            // Reached the top stop
+            current_move_state_clone.store(MOVE_STATE.up, Ordering::SeqCst);
+            *going_up = false;
+        } else {
+            current_move_state_clone.store(MOVE_STATE.free, Ordering::SeqCst);
+        }
+        cvar.notify_one();
+    });
 
+    let current_move_state_clone = current_move_state.clone();
+    let up_pair_clone = up_pair.clone();
+    start_input_listener(IS_DOWN_PIN, move|v|{
+        println!("VAL {:?} is {:?}", IS_DOWN_PIN, v);
+        let (lock, cvar) = &*up_pair_clone;
+        let mut going_down = lock.lock().unwrap();
+        if v == 1 {
+            // Reached the bottom stop
+            current_move_state_clone.store(MOVE_STATE.down, Ordering::SeqCst);
+            *going_down = false;
+        } else {
+            current_move_state_clone.store(MOVE_STATE.free, Ordering::SeqCst);
+        }
+        cvar.notify_one();
+    });
+
+    let pt_val_clone: Arc<(Mutex<i64>, Condvar)> = pt_val_pair.clone();
     pi_hive.get_mut_property("pt").unwrap().on_changed.connect(move |value| {
         let (lock, cvar) = &*pt_val_clone;
         let mut pt = lock.lock().unwrap();
@@ -129,7 +170,14 @@ fn main() {
         cvar.notify_one();
     });
 
+    let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+    let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
+    let current_move_state_clone = current_move_state.clone();
     pi_hive.get_mut_property("moveup").unwrap().on_changed.connect(move |value| {
+        if current_move_state_clone.load(Ordering::SeqCst) == MOVE_STATE.up {
+            println!("Already UP!!");
+            return;
+        }
         let (lock, cvar) = &*up_pair2;
         let mut going_up = lock.lock().unwrap();
         *going_up = value.unwrap().as_bool().unwrap();
@@ -137,7 +185,15 @@ fn main() {
         cvar.notify_one();
     });
 
+    let up_pair3: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+    let current_dir_clone2: Arc<AtomicU8> = current_dir.clone();
+    let current_move_state_clone = current_move_state.clone();
     pi_hive.get_mut_property("movedown").unwrap().on_changed.connect(move |value| {
+        println!("Current Move statet: {:?}", current_move_state_clone);
+        if current_move_state_clone.load(Ordering::SeqCst) == MOVE_STATE.down {
+            println!("Already DOWN!!");
+            return;
+        }
         let (lock, cvar) = &*up_pair3;
         let mut going_down = lock.lock().unwrap();
         *going_down = value.unwrap().as_bool().unwrap();
@@ -145,6 +201,7 @@ fn main() {
         cvar.notify_one();
     });
 
+    let speed_clone = speed_pair.clone();
     pi_hive.get_mut_property("speed").unwrap().on_changed.connect(move |value| {
         let (lock, cvar) = &*speed_clone;
         let mut speed = lock.lock().unwrap();
@@ -172,6 +229,7 @@ fn main() {
     });
 
     // Handler for speed
+    // todo task::spawn here doesn't work.. figure out why
     thread::spawn(move || {
         let (lock, cvar) = &*speed_pair;
         let mut speed = lock.lock().unwrap();
@@ -183,6 +241,7 @@ fn main() {
 
     let (mut sender, mut receiver) = mpsc::unbounded();
 
+    
     task::spawn(async move {
         let (lock, cvar) = &*up_pair;
         let mut turning = lock.lock().unwrap();
@@ -190,23 +249,29 @@ fn main() {
         while !*turning {
             //we wait until we receive a turn message
             turning = cvar.wait(turning).unwrap();
-            let dir = current_dir.load(Ordering::SeqCst);
-            let running = motor_clone.turn(dir);
+            if *turning {
+                let dir = current_dir.load(Ordering::SeqCst);
+                let running = motor_clone.turn(dir);
 
-            println!("<< TURNING {:?}", turning);
-            while *turning {
-                //we wait until we receive a stop turn message
-                turning = cvar.wait(turning).unwrap();
-                println!("<< Stop {:?}", turning);
-                motor_clone.stop();
-                running.unwrap().store(false, Ordering::SeqCst);
+                println!("<< TURNING {:?}", turning);
+                while *turning {
+                    //we wait until we receive a stop turn message
+                    turning = cvar.wait(turning).unwrap();
+                    if !*turning {
+                        println!("<< Stop {:?}", turning);
+                        motor_clone.stop();
+                        running.unwrap().store(false, Ordering::SeqCst);
+                    }
 
-                // TODO I'm not sure this is neccessary
-                break;
+                    // TODO I'm not sure this is neccessary
+                    break;
+                }
             }
+
         }
         // TODO why does appending an await on the line below, break everything?
-        sender.send(1);
+        sender.send(1).await;
+        Ok(())
     });
 
     // We wait here... forever
@@ -216,4 +281,25 @@ fn main() {
     motor.done();
 
     println!("Done");
+}
+
+// TODO this works well enough as is, but is not the best solution. preferably we should
+//  start a single thread and run each listeners in a task instead of starting a new thread
+//  for every input
+fn start_input_listener(num:u64, func: impl Fn(u8) +Send+Sync +'static){
+    thread::spawn( move ||{
+        let input = Pin::new(num);
+        input.with_exported(|| {
+            input.set_direction(Direction::In)?;
+            let mut prev_val: u8 = 255;
+            loop {
+                let val = input.get_value()?;
+                if val != prev_val {
+                    prev_val = val;
+                    func(val);
+                }
+                sleep(Duration::from_millis(10));
+            }
+        })
+    });
 }
