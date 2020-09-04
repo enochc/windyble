@@ -13,6 +13,8 @@ use sysfs_gpio::{Direction, Pin};
 
 use crate::motor::Motor;
 use crate::my_pin::MyPin;
+use log::{info, warn, debug, SetLoggerError, LevelFilter};
+use log::{Record, Level, Metadata};
 
 mod motor;
 mod my_pin;
@@ -33,6 +35,29 @@ const IS_DOWN_PIN: u64 = 6;
 const GO_UP_PIN:u64 = 9;
 const GO_DOWN_PIN:u64 = 11;
 
+// init logging
+struct SimpleLogger;
+impl log::Log for SimpleLogger {
+    fn enabled(&self, metadata: &Metadata) -> bool {
+        metadata.level() <= Level::Info
+    }
+
+    fn log(&self, record: &Record) {
+        if self.enabled(record.metadata()) {
+            println!("{:?} - {}", record.level(), record.args());
+        }
+    }
+
+    fn flush(&self) {}
+}
+static LOGGER: SimpleLogger = SimpleLogger;
+
+fn init() -> Result<(), SetLoggerError> {
+    log::set_logger(&LOGGER)
+        .map(|()| log::set_max_level(LevelFilter::Trace))
+}
+// done init logging
+
 struct Dir;
 
 impl Dir {
@@ -52,6 +77,9 @@ const MOVE_STATE: MoveState = MoveState {
     down: 2,
 };
 
+static CURRENT_DIRECTION: AtomicU8 = AtomicU8::new(0);
+static CURRENT_MOVE_STATE: AtomicU8 = AtomicU8::new(MOVE_STATE.free);
+
 /// Default action is to listen on 127.0.0.1:3000 unless specified otherweise
 /// when connecting, it inherits properties from the server
 ///
@@ -62,18 +90,20 @@ const MOVE_STATE: MoveState = MoveState {
 ///     board test connect 192.168.0.43:3000
 /// ```
 fn main() {
+    init().expect("Failed to Init logger");
+
     let args: Vec<String> = env::args().collect();
     let is_test = args.contains(&String::from("test"));
     let mut action = "";
     let mut addr = local_ipaddress::get().unwrap();
-    let current_move_state = Arc::new(AtomicU8::new(MOVE_STATE.free));
+    // let current_move_state: Arc<AtomicU8> = Arc::new(AtomicU8::new(MOVE_STATE.free));
 
     for (i, name) in args.iter().enumerate() {
         if name == "connect" || name == "listen" {
             action = name;
             let adr_val = args.get(i + 1);
             if adr_val.is_none() && addr.is_empty() {
-                eprintln!("No address specified for action {}", action);
+                warn!("No address specified for action {}", action);
                 return;
             } else {
                 if adr_val.is_some() {
@@ -84,7 +114,7 @@ fn main() {
                         addr = String::from(adr_val.unwrap());
                     }
                 }
-                println!("{}ing to: {:?}, is test: {:?}", action, addr, is_test);
+                info!("{}ing to: {:?}, is test: {:?}", action, addr, is_test);
                 break;
             }
         }
@@ -102,7 +132,7 @@ fn main() {
     pt = 0
     ", action, addr, motor::DEFAULT_DURATION);
 
-    println!("{}", hive_props);
+    info!("{}", hive_props);
 
     let mut pi_hive = Hive::new_from_str("SERVE", hive_props.as_str());
 
@@ -130,55 +160,51 @@ fn main() {
     let speed_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
     let pt_val_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
 
-    let current_dir: Arc<AtomicU8> = Arc::new(AtomicU8::new(0));
-
     let up_pair_clone = up_pair.clone();
-    let current_move_state_clone = current_move_state.clone();
     start_input_listener(IS_UP_PIN, move |v| {
-        println!("VAL {:?} is {:?}", IS_UP_PIN, v);
+        debug!("VAL {:?} is {:?}", IS_UP_PIN, v);
         let (lock, cvar) = &*up_pair_clone;
         let mut going_up = lock.lock().unwrap();
         if v == 1 {
             // Reached the top stop
-            current_move_state_clone.store(MOVE_STATE.up, Ordering::SeqCst);
+            CURRENT_MOVE_STATE.store(MOVE_STATE.up, Ordering::SeqCst);
             *going_up = false;
         } else {
-            current_move_state_clone.store(MOVE_STATE.free, Ordering::SeqCst);
+            CURRENT_MOVE_STATE.store(MOVE_STATE.free, Ordering::SeqCst);
         }
         cvar.notify_one();
     });
 
-    let current_move_state_clone = current_move_state.clone();
     let up_pair_clone = up_pair.clone();
     start_input_listener(IS_DOWN_PIN, move |v| {
-        println!("VAL {:?} is {:?}", IS_DOWN_PIN, v);
+        debug!("VAL {:?} is {:?}", IS_DOWN_PIN, v);
         let (lock, cvar) = &*up_pair_clone;
         let mut going_down = lock.lock().unwrap();
         if v == 1 {
             // Reached the bottom stop
-            current_move_state_clone.store(MOVE_STATE.down, Ordering::SeqCst);
+            CURRENT_MOVE_STATE.store(MOVE_STATE.down, Ordering::SeqCst);
             *going_down = false;
         } else {
-            current_move_state_clone.store(MOVE_STATE.free, Ordering::SeqCst);
+            CURRENT_MOVE_STATE.store(MOVE_STATE.free, Ordering::SeqCst);
         }
         cvar.notify_one();
     });
 
-    let turn_motor = move |direction:Option<u8>, do_turn:&(Mutex<bool>, Condvar), current_dir:&AtomicU8, current_state:&AtomicU8| {
+    let turn_motor = move |direction:Option<u8>, do_turn:&(Mutex<bool>, Condvar)| {
         let (lock, cvar) = do_turn;
         let mut turning = lock.lock().unwrap();
-        let current_state = current_state.load(Ordering::SeqCst);
+        let current_state = CURRENT_MOVE_STATE.load(Ordering::SeqCst);
         match direction {
             Some(dir) => {
                 if dir == Dir::COUNTER_CLOCKWISE && current_state == MOVE_STATE.up {
-                    println!("Already UP!!");
+                    info!("Already UP!!");
                     return;
                 } else if dir == Dir::CLOCKWISE && current_state == MOVE_STATE.down {
-                    println!("Already DOWN!!");
+                    info!("Already DOWN!!");
                     return;
                 }
 
-                current_dir.store(dir, Ordering::SeqCst);
+                CURRENT_DIRECTION.store(dir, Ordering::SeqCst);
                 *turning = true;
             },
             _ => {
@@ -189,26 +215,22 @@ fn main() {
     };
 
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
-    let current_move_state_clone = current_move_state.clone();
     start_input_listener(GO_UP_PIN, move|v|{
-        println!("GO UP PIN: {:?}", v);
+        debug!("GO UP PIN: {:?}", v);
         if v == 1 {
-            &turn_motor(Some(Dir::COUNTER_CLOCKWISE), &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+            &turn_motor(Some(Dir::COUNTER_CLOCKWISE), &*up_pair2);
         } else {
-            &turn_motor(None, &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+            &turn_motor(None, &*up_pair2);
         }
     });
 
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
-    let current_move_state_clone = current_move_state.clone();
     start_input_listener(GO_DOWN_PIN, move|v|{
-        println!("GO UP PIN: {:?}", v);
+        debug!("GO UP PIN: {:?}", v);
         if v == 1 {
-            &turn_motor(Some(Dir::CLOCKWISE), &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+            &turn_motor(Some(Dir::CLOCKWISE), &*up_pair2);
         } else {
-            &turn_motor(None, &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+            &turn_motor(None, &*up_pair2);
         }
     });
 
@@ -221,21 +243,17 @@ fn main() {
     });
 
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
-    let current_move_state_clone = current_move_state.clone();
     pi_hive.get_mut_property("moveup").unwrap().on_changed.connect(move |value| {
         let do_go_up = value.unwrap().as_bool().unwrap();
         let dir = if do_go_up {Some(Dir::COUNTER_CLOCKWISE)} else {None};
-        &turn_motor(dir, &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+        &turn_motor(dir, &*up_pair2);
     });
 
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
-    let current_move_state_clone = current_move_state.clone();
     pi_hive.get_mut_property("movedown").unwrap().on_changed.connect(move |value| {
         let do_go_down = value.unwrap().as_bool().unwrap();
         let dir = if do_go_down {Some(Dir::CLOCKWISE)} else {None};
-        turn_motor(dir, &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+        turn_motor(dir, &*up_pair2);
     });
 
     let speed_clone = speed_pair.clone();
@@ -284,7 +302,7 @@ fn main() {
         //we wait until we receive a turn message
         turning = cvar.wait(turning).unwrap();
         if *turning {
-            let dir = current_dir.load(Ordering::SeqCst);
+            let dir = CURRENT_DIRECTION.load(Ordering::SeqCst);
             let running = motor.turn(dir);
 
             while *turning {
@@ -304,7 +322,7 @@ fn main() {
     // this never runs, the pins are never exported because the only way to end this loop
     // Is to kill the service
     motor.done();
-    println!("Main Done");
+    info!("Main Done");
 }
 
 // TODO this works well enough as is, but is not the best solution. preferably we should
@@ -312,16 +330,16 @@ fn main() {
 //  for every input
 fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
     thread::spawn(move || {
-        println!("Start listening to pin {}", num);
+        info!("Start listening to pin {}", num);
         let input = Pin::new(num);
         input.with_exported(|| {
-            sleep(Duration::from_millis(80));
+            sleep(Duration::from_millis(100));
             input.set_direction(Direction::In)?;
             let mut prev_val: u8 = 255;
             loop {
                 let val = input.get_value()?;
                 if val != prev_val {
-                    println!("<< input changed: {}", val);
+                    info!("<< input changed: {}", val);
                     prev_val = val;
                     func(val);
                 }

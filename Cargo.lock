@@ -186,6 +186,7 @@ dependencies = [
  "futures",
  "hive",
  "local_ipaddress",
+ "log",
  "smol 0.3.3",
  "sysfs_gpio",
 ]
