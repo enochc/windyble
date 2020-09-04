@@ -226,7 +226,7 @@ fn main() {
 
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
     start_input_listener(GO_DOWN_PIN, move|v|{
-        debug!("GO UP PIN: {:?}", v);
+        debug!("GO DOWN PIN: {:?}", v);
         if v == 1 {
             &turn_motor(Some(Dir::CLOCKWISE), &*up_pair2);
         } else {

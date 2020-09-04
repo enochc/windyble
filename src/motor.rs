@@ -11,6 +11,9 @@ use crate::my_pin::MyPin;
 
 use self::sysfs_gpio::{Direction};
 
+#[allow(unused_imports)]
+use log::{info, warn, debug};
+
 #[derive(Clone)]
 pub struct Motor {
     step_pin: MyPin,
@@ -50,7 +53,7 @@ impl Motor {
     */
     pub fn set_speed(&self, val: u64) {
         let speed = (((SPEED_MAX - SPEED_MIN) / 100) * val) + SPEED_MIN;
-        println!("<<<<<< set speed {}, {}", val, speed);
+        info!("set speed {}, {}", val, speed);
         self.step_duration.store(speed, Ordering::SeqCst);
     }
 
@@ -121,7 +124,7 @@ impl Motor {
 
     fn power_motor(&self, on: bool) {
         let num = self.power_pin.number;
-        println!("switching motor ({:?}) {}", num, if on { "on" } else { "off" });
+        info!("switching motor ({:?}) {}", num, if on { "on" } else { "off" });
         let val = if on { 1 } else { 0 };
         self.power_pin.set_value(val).expect("Failed to change motor power");
     }
@@ -129,7 +132,7 @@ impl Motor {
 
     pub fn turn(&mut self, dir: u8) -> Option<Arc<AtomicBool>> {
         if self.is_turning {
-            println!("Already turning!");
+            info!("Already turning!");
             return None::<Arc<AtomicBool>>;
         }
 
@@ -140,7 +143,6 @@ impl Motor {
         self.set_direction(dir);
         self.is_turning = true;
         let clone = self.clone();
-        println!("<<<< .... TURN AWAY: {:?} .... >>>>", clone.step_duration);
         let speed = self.step_duration.load(Ordering::SeqCst);
         thread::spawn(move || {
             while running_clone.load(Ordering::SeqCst) {
@@ -149,13 +151,13 @@ impl Motor {
                 clone.step_pin.set_value(0).unwrap();
                 sleep(Duration::from_micros(speed));
             }
-            println!("Motor Done turning");
+            info!("Motor Done turning");
         });
         return Some(running);
     }
 
     pub fn stop(&mut self) {
-        println!("....... STOP");
+        info!("....... STOP");
         self.is_turning = false;
         self.step_pin.set_value(0).unwrap();
         self.power_motor(false);
@@ -163,7 +165,7 @@ impl Motor {
 
 
     pub fn set_direction(&self, dir: u8) {
-        println!("........ SET DIRECTION {:?}", dir);
+        info!("SET DIRECTION {:?}", dir);
         self.dir_pin.set_value(dir).expect("Failed to set direction");
     }
 

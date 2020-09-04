@@ -1,6 +1,9 @@
 // extern crate sysfs_gpio;
 use sysfs_gpio::{Direction, Pin, Error};
 
+#[allow(unused_imports)]
+use log::{info, warn, debug};
+
 #[derive(Clone)]
 pub struct MyPin {
     pin: Option<Pin>,
@@ -24,7 +27,7 @@ impl MyPin {
         return match self.pin {
             Some(p) => p.get_value(),
             None => {
-                println!("get value of PIN {:?}", self.number);
+                debug!("get value of PIN {:?}", self.number);
                 Ok(0)
             }
         };
@@ -36,7 +39,7 @@ impl MyPin {
                 p.set_value(val)
             },
             None => {
-                println!("Set PIN {:?} = {:?}",self.number, val);
+                debug!("Set PIN {:?} = {:?}",self.number, val);
                 Ok(())
             }
         };
@@ -45,7 +48,7 @@ impl MyPin {
         return match self.pin {
             Some(p) => p.set_direction(val),
             None => {
-                println!("Set Direction {:?} = {:?}",self.number, val);
+                debug!("Set Direction {:?} = {:?}",self.number, val);
                 Ok(())
             }
         };
@@ -54,7 +57,7 @@ impl MyPin {
         return match self.pin {
             Some(p) => p.export(),
             None => {
-                println!("Export PIN {:?}", self.number);
+                debug!("Export PIN {:?}", self.number);
                 Ok(())
             }
         };
@@ -63,7 +66,7 @@ impl MyPin {
         return match self.pin {
             Some(p) => p.unexport(),
             None => {
-                println!("UnExport PIN {:?}",self.number);
+                debug!("UnExport PIN {:?}",self.number);
                 Ok(())
             }
         };
