@@ -18,23 +18,26 @@ mod motor;
 mod my_pin;
 
 const STEP: u64 = 26;
-// purple
 const DIR: u64 = 19;
-// While
 const POWER_RELAY_PIN: u64 = 13;
 
 // Potentiometer pins
 const PT1: u64 = 16;
 const PT2: u64 = 20;
 
+// delimeter pins
 const IS_UP_PIN: u64 = 5;
 const IS_DOWN_PIN: u64 = 6;
+
+//physical up/down pins
+const GO_UP_PIN:u64 = 9;
+const GO_DOWN_PIN:u64 = 11;
 
 struct Dir;
 
 impl Dir {
-    const CLOCKWISE: u8 = 1;
-    const COUNTER_CLOCKWISE: u8 = 0;
+    const CLOCKWISE: u8 = 1; // DOWN
+    const COUNTER_CLOCKWISE: u8 = 0; // UO
 }
 
 struct MoveState {
@@ -161,6 +164,54 @@ fn main() {
         cvar.notify_one();
     });
 
+    let turn_motor = move |direction:Option<u8>, do_turn:&(Mutex<bool>, Condvar), current_dir:&AtomicU8, current_state:&AtomicU8| {
+        let (lock, cvar) = do_turn;
+        let mut turning = lock.lock().unwrap();
+        let current_state = current_state.load(Ordering::SeqCst);
+        match direction {
+            Some(dir) => {
+                if dir == Dir::COUNTER_CLOCKWISE && current_state == MOVE_STATE.up {
+                    println!("Already UP!!");
+                    return;
+                } else if dir == Dir::CLOCKWISE && current_state == MOVE_STATE.down {
+                    println!("Already DOWN!!");
+                    return;
+                }
+
+                current_dir.store(dir, Ordering::SeqCst);
+                *turning = true;
+            },
+            _ => {
+                *turning = false;
+            }
+        }
+        cvar.notify_one();
+    };
+
+    let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+    let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
+    let current_move_state_clone = current_move_state.clone();
+    start_input_listener(GO_UP_PIN, move|v|{
+        println!("GO UP PIN: {:?}", v);
+        if v == 1 {
+            &turn_motor(Some(Dir::COUNTER_CLOCKWISE), &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+        } else {
+            &turn_motor(None, &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+        }
+    });
+
+    let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+    let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
+    let current_move_state_clone = current_move_state.clone();
+    start_input_listener(GO_DOWN_PIN, move|v|{
+        println!("GO UP PIN: {:?}", v);
+        if v == 1 {
+            &turn_motor(Some(Dir::CLOCKWISE), &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+        } else {
+            &turn_motor(None, &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
+        }
+    });
+
     let pt_val_clone: Arc<(Mutex<i64>, Condvar)> = pt_val_pair.clone();
     pi_hive.get_mut_property("pt").unwrap().on_changed.connect(move |value| {
         let (lock, cvar) = &*pt_val_clone;
@@ -173,31 +224,18 @@ fn main() {
     let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
     let current_move_state_clone = current_move_state.clone();
     pi_hive.get_mut_property("moveup").unwrap().on_changed.connect(move |value| {
-        if current_move_state_clone.load(Ordering::SeqCst) == MOVE_STATE.up {
-            println!("Already UP!!");
-            return;
-        }
-        let (lock, cvar) = &*up_pair2;
-        let mut going_up = lock.lock().unwrap();
-        *going_up = value.unwrap().as_bool().unwrap();
-        current_dir_clone.store(Dir::COUNTER_CLOCKWISE, Ordering::SeqCst);
-        cvar.notify_one();
+        let do_go_up = value.unwrap().as_bool().unwrap();
+        let dir = if do_go_up {Some(Dir::COUNTER_CLOCKWISE)} else {None};
+        &turn_motor(dir, &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
     });
 
-    let up_pair3: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    let current_dir_clone2: Arc<AtomicU8> = current_dir.clone();
+    let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+    let current_dir_clone: Arc<AtomicU8> = current_dir.clone();
     let current_move_state_clone = current_move_state.clone();
     pi_hive.get_mut_property("movedown").unwrap().on_changed.connect(move |value| {
-        println!("Current Move statet: {:?}", current_move_state_clone);
-        if current_move_state_clone.load(Ordering::SeqCst) == MOVE_STATE.down {
-            println!("Already DOWN!!");
-            return;
-        }
-        let (lock, cvar) = &*up_pair3;
-        let mut going_down = lock.lock().unwrap();
-        *going_down = value.unwrap().as_bool().unwrap();
-        current_dir_clone2.store(Dir::CLOCKWISE, Ordering::SeqCst);
-        cvar.notify_one();
+        let do_go_down = value.unwrap().as_bool().unwrap();
+        let dir = if do_go_down {Some(Dir::CLOCKWISE)} else {None};
+        turn_motor(dir, &*up_pair2, &*current_dir_clone, &*current_move_state_clone);
     });
 
     let speed_clone = speed_pair.clone();
@@ -274,17 +312,20 @@ fn main() {
 //  for every input
 fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
     thread::spawn(move || {
+        println!("Start listening to pin {}", num);
         let input = Pin::new(num);
         input.with_exported(|| {
+            sleep(Duration::from_millis(80));
             input.set_direction(Direction::In)?;
             let mut prev_val: u8 = 255;
             loop {
                 let val = input.get_value()?;
                 if val != prev_val {
+                    println!("<< input changed: {}", val);
                     prev_val = val;
                     func(val);
                 }
-                sleep(Duration::from_millis(10));
+                sleep(Duration::from_millis(30));
             }
         })
     });
