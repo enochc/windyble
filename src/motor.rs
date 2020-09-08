@@ -1,4 +1,3 @@
-extern crate sysfs_gpio;
 
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
@@ -9,7 +8,7 @@ use async_std::sync::Arc;
 
 use crate::my_pin::MyPin;
 
-use self::sysfs_gpio::{Direction};
+use sysfs_gpio::{Direction};
 
 #[allow(unused_imports)]
 use log::{info, warn, debug};
@@ -125,7 +124,7 @@ impl Motor {
     fn power_motor(&self, on: bool) {
         let num = self.power_pin.number;
         info!("switching motor ({:?}) {}", num, if on { "on" } else { "off" });
-        let val = if on { 1 } else { 0 };
+        let val = if on { 0 } else { 1 };
         self.power_pin.set_value(val).expect("Failed to change motor power");
     }
 

@@ -155,6 +155,29 @@ fn main() {
         is_test,
     );
 
+    let turn_motor = move |direction:Option<u8>, do_turn:&(Mutex<bool>, Condvar)| {
+        let (lock, cvar) = do_turn;
+        let mut turning = lock.lock().unwrap();
+        let current_state = CURRENT_MOVE_STATE.load(Ordering::SeqCst);
+        match direction {
+            Some(dir) => {
+                if dir == Dir::COUNTER_CLOCKWISE && current_state == MOVE_STATE.up {
+                    info!("Already UP!!");
+                    return;
+                } else if dir == Dir::CLOCKWISE && current_state == MOVE_STATE.down {
+                    info!("Already DOWN!!");
+                    return;
+                }
+
+                CURRENT_DIRECTION.store(dir, Ordering::SeqCst);
+                *turning = true;
+            },
+            _ => {
+                *turning = false;
+            }
+        }
+        cvar.notify_one();
+    };
 
     let up_pair: Arc<(Mutex<bool>, Condvar)> = Arc::new((Mutex::new(false), Condvar::new()));
     let speed_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
@@ -190,29 +213,6 @@ fn main() {
         cvar.notify_one();
     });
 
-    let turn_motor = move |direction:Option<u8>, do_turn:&(Mutex<bool>, Condvar)| {
-        let (lock, cvar) = do_turn;
-        let mut turning = lock.lock().unwrap();
-        let current_state = CURRENT_MOVE_STATE.load(Ordering::SeqCst);
-        match direction {
-            Some(dir) => {
-                if dir == Dir::COUNTER_CLOCKWISE && current_state == MOVE_STATE.up {
-                    info!("Already UP!!");
-                    return;
-                } else if dir == Dir::CLOCKWISE && current_state == MOVE_STATE.down {
-                    info!("Already DOWN!!");
-                    return;
-                }
-
-                CURRENT_DIRECTION.store(dir, Ordering::SeqCst);
-                *turning = true;
-            },
-            _ => {
-                *turning = false;
-            }
-        }
-        cvar.notify_one();
-    };
 
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
     start_input_listener(GO_UP_PIN, move|v|{
@@ -329,17 +329,20 @@ fn main() {
 //  start a single thread and run each listeners in a task instead of starting a new thread
 //  for every input
 fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
+
     thread::spawn(move || {
         info!("Start listening to pin {}", num);
         let input = Pin::new(num);
         input.with_exported(|| {
+            // the sleep here is a workaround on an async bug in the pin export code.
             sleep(Duration::from_millis(100));
+            input.set_active_low(true).expect("Failed to set active low");
             input.set_direction(Direction::In)?;
             let mut prev_val: u8 = 255;
             loop {
                 let val = input.get_value()?;
                 if val != prev_val {
-                    info!("<< input changed: {}", val);
+                    info!("<< input changed: on{} to {}", num, val);
                     prev_val = val;
                     func(val);
                 }

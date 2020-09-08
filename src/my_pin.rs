@@ -1,4 +1,3 @@
-// extern crate sysfs_gpio;
 use sysfs_gpio::{Direction, Pin, Error};
 
 #[allow(unused_imports)]
@@ -6,7 +5,7 @@ use log::{info, warn, debug};
 
 #[derive(Clone)]
 pub struct MyPin {
-    pin: Option<Pin>,
+    pub pin: Option<Pin>,
     pub number:u64,
     pub is_test:bool
 }

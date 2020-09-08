@@ -8,6 +8,7 @@ edition = "2018"
 
 [dependencies]
 sysfs_gpio = {version="0.5"}
+#rppal = "0.11.3"
 futures = "0.3.5"
 hive = { git = 'https://github.com/enochc/hive', branch = 'new_master' , version = "0.1.300"}
 async-std = "1.6.2"
