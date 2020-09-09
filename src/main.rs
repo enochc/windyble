@@ -1,45 +1,46 @@
 use std::{env, thread};
 use std::sync::{Condvar, Mutex};
-use std::sync::atomic::{AtomicU8, Ordering};
-use std::thread::sleep;
-use std::time::Duration;
+use std::sync::atomic::{AtomicU8, Ordering, AtomicBool};
 
+use std::time::Duration;
 use async_std::sync::Arc;
 use async_std::task;
+
+
 use futures::executor::block_on;
 use hive::hive::Hive;
 use local_ipaddress;
-use sysfs_gpio::{Direction, Pin};
+use log::{debug, info, LevelFilter, SetLoggerError, warn};
+use log::{Level, Metadata, Record};
+use simple_signal::{self, Signal};
 
 use crate::motor::Motor;
 use crate::my_pin::MyPin;
-use log::{info, warn, debug, SetLoggerError, LevelFilter};
-use log::{Record, Level, Metadata};
 
 mod motor;
 mod my_pin;
 
-const STEP: u64 = 26;
-const DIR: u64 = 19;
-const POWER_RELAY_PIN: u64 = 13;
+const STEP: u64 = 11;//26;
+const DIR: u64 = 9;//19;
+const POWER_RELAY_PIN: u64 = 10;//13;
 
 // Potentiometer pins
-const PT1: u64 = 16;
-const PT2: u64 = 20;
+const PT1: u64 = 6;//16;
+const PT2: u64 = 5;//20;
 
-// delimeter pins
-const IS_UP_PIN: u64 = 5;
-const IS_DOWN_PIN: u64 = 6;
+// delimiter pins
+const IS_UP_PIN: Option<u64> = None;//Some(5);
+const IS_DOWN_PIN: Option<u64> = None;//Some(6);
 
 //physical up/down pins
-const GO_UP_PIN:u64 = 9;
-const GO_DOWN_PIN:u64 = 11;
+const GO_UP_PIN:Option<u64> = None;//Some(9);
+const GO_DOWN_PIN:Option<u64> = None;//Some(11);
 
 // init logging
-struct SimpleLogger;
+pub struct SimpleLogger;
 impl log::Log for SimpleLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Info
+        metadata.level() <= Level::Trace
     }
 
     fn log(&self, record: &Record) {
@@ -50,9 +51,9 @@ impl log::Log for SimpleLogger {
 
     fn flush(&self) {}
 }
-static LOGGER: SimpleLogger = SimpleLogger;
+pub static LOGGER: SimpleLogger = SimpleLogger;
 
-fn init() -> Result<(), SetLoggerError> {
+fn init_logging() -> Result<(), SetLoggerError> {
     log::set_logger(&LOGGER)
         .map(|()| log::set_max_level(LevelFilter::Trace))
 }
@@ -80,6 +81,30 @@ const MOVE_STATE: MoveState = MoveState {
 static CURRENT_DIRECTION: AtomicU8 = AtomicU8::new(0);
 static CURRENT_MOVE_STATE: AtomicU8 = AtomicU8::new(MOVE_STATE.free);
 
+
+#[allow(dead_code)]
+fn main_test() {
+    init_logging().expect("Failed to Init logger");
+    start_input_listener(6, move |v| {
+        println!("VAL {:?} is {:?}", 6, v);
+
+    });
+
+    let running = Arc::new(AtomicBool::new(true));
+    simple_signal::set_handler(&[Signal::Int, Signal::Term], {
+        let running = running.clone();
+
+        move |sig| {
+            println!("<< Received signal!! {:?}",sig);
+            running.store(false, Ordering::SeqCst);
+        }
+    });
+    while running.load(Ordering::SeqCst) {
+        thread::sleep(Duration::from_secs(1));
+    }
+    println!("all done");
+}
+
 /// Default action is to listen on 127.0.0.1:3000 unless specified otherweise
 /// when connecting, it inherits properties from the server
 ///
@@ -90,14 +115,18 @@ static CURRENT_MOVE_STATE: AtomicU8 = AtomicU8::new(MOVE_STATE.free);
 ///     board test connect 192.168.0.43:3000
 /// ```
 fn main() {
-    init().expect("Failed to Init logger");
+    init_logging().expect("Failed to Init logger");
 
     let args: Vec<String> = env::args().collect();
     let is_test = args.contains(&String::from("test"));
     let mut action = "";
     let mut addr = local_ipaddress::get().unwrap();
     // let current_move_state: Arc<AtomicU8> = Arc::new(AtomicU8::new(MOVE_STATE.free));
-
+    if args.len() ==1 { // no args specified only board command
+        // default to listen 3000
+        action = "listen";
+        addr = format!("{}:3000", addr);
+    }
     for (i, name) in args.iter().enumerate() {
         if name == "connect" || name == "listen" {
             action = name;
@@ -134,6 +163,7 @@ fn main() {
 
     info!("{}", hive_props);
 
+
     let mut pi_hive = Hive::new_from_str("SERVE", hive_props.as_str());
 
     let step_pin = MyPin::new(STEP, is_test);
@@ -141,8 +171,6 @@ fn main() {
     let power_pin = MyPin::new(POWER_RELAY_PIN, is_test);
     let pt_pin_1 = MyPin::new(PT1, is_test);
     let pt_pin_2 = MyPin::new(PT2, is_test);
-    let is_up_pin = Some(MyPin::new(IS_UP_PIN, is_test));
-    let is_down_pin = Some(MyPin::new(IS_DOWN_PIN, is_test));
 
     let mut motor = Motor::new(
         step_pin,
@@ -150,8 +178,6 @@ fn main() {
         power_pin,
         pt_pin_1,
         pt_pin_2,
-        is_up_pin,
-        is_down_pin,
         is_test,
     );
 
@@ -183,56 +209,72 @@ fn main() {
     let speed_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
     let pt_val_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
 
-    let up_pair_clone = up_pair.clone();
-    start_input_listener(IS_UP_PIN, move |v| {
-        debug!("VAL {:?} is {:?}", IS_UP_PIN, v);
-        let (lock, cvar) = &*up_pair_clone;
-        let mut going_up = lock.lock().unwrap();
-        if v == 1 {
-            // Reached the top stop
-            CURRENT_MOVE_STATE.store(MOVE_STATE.up, Ordering::SeqCst);
-            *going_up = false;
-        } else {
-            CURRENT_MOVE_STATE.store(MOVE_STATE.free, Ordering::SeqCst);
-        }
-        cvar.notify_one();
-    });
+    if IS_UP_PIN.is_some(){
+        start_input_listener(IS_UP_PIN.unwrap(),  {
+            let up_pair_clone = up_pair.clone();
+            move |v| {
+                debug!("VAL {:?} is {:?}", IS_UP_PIN, v);
+                let (lock, cvar) = &*up_pair_clone;
+                let mut going_up = lock.lock().unwrap();
+                if v == 1 {
+                    // Reached the top stop
+                    CURRENT_MOVE_STATE.store(MOVE_STATE.up, Ordering::SeqCst);
+                    *going_up = false;
+                } else {
+                    CURRENT_MOVE_STATE.store(MOVE_STATE.free, Ordering::SeqCst);
+                }
+                cvar.notify_one();
+            }
+        });
+    }
 
-    let up_pair_clone = up_pair.clone();
-    start_input_listener(IS_DOWN_PIN, move |v| {
-        debug!("VAL {:?} is {:?}", IS_DOWN_PIN, v);
-        let (lock, cvar) = &*up_pair_clone;
-        let mut going_down = lock.lock().unwrap();
-        if v == 1 {
-            // Reached the bottom stop
-            CURRENT_MOVE_STATE.store(MOVE_STATE.down, Ordering::SeqCst);
-            *going_down = false;
-        } else {
-            CURRENT_MOVE_STATE.store(MOVE_STATE.free, Ordering::SeqCst);
-        }
-        cvar.notify_one();
-    });
+    if IS_DOWN_PIN.is_some(){
+        start_input_listener(IS_DOWN_PIN.unwrap(), {
+            let up_pair_clone = up_pair.clone();
+            move |v| {
+                debug!("VAL {:?} is {:?}", IS_DOWN_PIN, v);
+                let (lock, cvar) = &*up_pair_clone;
+                let mut going_down = lock.lock().unwrap();
+                if v == 1 {
+                    // Reached the bottom stop
+                    CURRENT_MOVE_STATE.store(MOVE_STATE.down, Ordering::SeqCst);
+                    *going_down = false;
+                } else {
+                    CURRENT_MOVE_STATE.store(MOVE_STATE.free, Ordering::SeqCst);
+                }
+                cvar.notify_one();
+            }
+        });
+    }
 
+    if GO_UP_PIN.is_some(){
+        start_input_listener(GO_UP_PIN.unwrap(), {
+            let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+            move|v|{
+                debug!("GO UP PIN: {:?}", v);
+                if v == 1 {
+                    &turn_motor(Some(Dir::COUNTER_CLOCKWISE), &*up_pair2);
+                } else {
+                    &turn_motor(None, &*up_pair2);
+                }
+            }
+        });
+    }
 
-    let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    start_input_listener(GO_UP_PIN, move|v|{
-        debug!("GO UP PIN: {:?}", v);
-        if v == 1 {
-            &turn_motor(Some(Dir::COUNTER_CLOCKWISE), &*up_pair2);
-        } else {
-            &turn_motor(None, &*up_pair2);
-        }
-    });
+    if GO_DOWN_PIN.is_some(){
+        start_input_listener(GO_DOWN_PIN.unwrap(), {
+            let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+            move|v|{
+                debug!("GO DOWN PIN: {:?}", v);
+                if v == 1 {
+                    &turn_motor(Some(Dir::CLOCKWISE), &*up_pair2);
+                } else {
+                    &turn_motor(None, &*up_pair2);
+                }
+            }
+        });
+    }
 
-    let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    start_input_listener(GO_DOWN_PIN, move|v|{
-        debug!("GO DOWN PIN: {:?}", v);
-        if v == 1 {
-            &turn_motor(Some(Dir::CLOCKWISE), &*up_pair2);
-        } else {
-            &turn_motor(None, &*up_pair2);
-        }
-    });
 
     let pt_val_clone: Arc<(Mutex<i64>, Condvar)> = pt_val_pair.clone();
     pi_hive.get_mut_property("pt").unwrap().on_changed.connect(move |value| {
@@ -265,7 +307,9 @@ fn main() {
     });
 
     thread::spawn(move || {
+        println!("run Hive");
         block_on(pi_hive.run());
+        println!("Hive run");
     });
 
     motor.init();
@@ -300,6 +344,7 @@ fn main() {
     // let mut motor_clone = motor.clone();
     while !*turning {
         //we wait until we receive a turn message
+        println!("waiting to turn");
         turning = cvar.wait(turning).unwrap();
         if *turning {
             let dir = CURRENT_DIRECTION.load(Ordering::SeqCst);
@@ -325,29 +370,66 @@ fn main() {
     info!("Main Done");
 }
 
+#[allow(unused_variables)]
+#[cfg(target_arch = "x86_64")]
+fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
+    println!("starting on non x86");
+}
+
+#[cfg(target_arch = "arm")]
+use sysfs_gpio::{Direction, Pin};
+
+#[cfg(target_arch = "arm")]
+use rppal::gpio::{Gpio, Trigger};
+#[cfg(target_arch = "arm")]
+use rppal::gpio::Level::High;
+
+#[cfg(target_arch = "arm")]
 // TODO this works well enough as is, but is not the best solution. preferably we should
 //  start a single thread and run each listeners in a task instead of starting a new thread
 //  for every input
 fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
-
     thread::spawn(move || {
+        let gpio = Gpio::new().unwrap();
+        let pin = gpio.get(6).unwrap().into_input_pulldown();
+        let mut last_val = if pin.read() == High {1} else {0};
+
         info!("Start listening to pin {}", num);
-        let input = Pin::new(num);
-        input.with_exported(|| {
-            // the sleep here is a workaround on an async bug in the pin export code.
-            sleep(Duration::from_millis(100));
-            input.set_active_low(true).expect("Failed to set active low");
-            input.set_direction(Direction::In)?;
-            let mut prev_val: u8 = 255;
-            loop {
-                let val = input.get_value()?;
-                if val != prev_val {
-                    info!("<< input changed: on{} to {}", num, val);
-                    prev_val = val;
-                    func(val);
-                }
-                sleep(Duration::from_millis(30));
+        loop {
+            let new_val = if pin.read() == High {1} else {0};
+            if new_val != last_val {
+                println!("pin == {:?}", pin.read());
+                func(new_val);
+                last_val = new_val;
             }
-        })
+
+            thread::sleep(Duration::from_millis(30))
+        };
+
+
     });
 }
+
+// orig
+// fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
+//     thread::spawn(move || {
+//         info!("Start listening to pin {}", num);
+//         let input = Pin::new(num);
+//         input.with_exported(|| {
+//             // the sleep here is a workaround on an async bug in the pin export code.
+//             thread::sleep(Duration::from_millis(100));
+//             input.set_active_low(true).expect("Failed to set active low");
+//             input.set_direction(Direction::In)?;
+//             let mut prev_val: u8 = 255;
+//             loop {
+//                 let val = input.get_value()?;
+//                 if val != prev_val {
+//                     info!("<< input changed: on{} to {}", num, val);
+//                     prev_val = val;
+//                     func(val);
+//                 }
+//                 thread::sleep(Duration::from_millis(30));
+//             }
+//         })
+//     });
+// }

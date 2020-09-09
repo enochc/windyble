@@ -20,11 +20,9 @@ pub struct Motor {
     power_pin: MyPin,
     pt_pin_1: MyPin,
     pt_pin_2: MyPin,
-    is_up_pin: Option<MyPin>,
-    is_down_pin: Option<MyPin>,
-    turn_delay: Duration,
     is_turning: bool,
     step_duration: Arc<AtomicU64>,
+    is_test: bool,
 }
 
 // impl Clone for Motor {
@@ -32,7 +30,6 @@ pub struct Motor {
 //         return Motor {
 //             step_pin: self.step_pin.clone(),
 //             dir_pin: self.dir_pin.clone(),
-//             turn_delay: self.turn_delay.clone(),
 //             direction: self.direction.clone(),
 //             is_turning: self.is_turning.clone(),
 //             step_duration: AtomicU32::new(self.is_turning.load(Ordering::SeqCst)),
@@ -66,27 +63,18 @@ impl Motor {
                power_pin: MyPin,
                pt_pin_1: MyPin,
                pt_pin_2: MyPin,
-               is_up_pin: Option<MyPin>,
-               is_down_pin: Option<MyPin>,
                is_test: bool) -> Motor
     {
-        let duration = if is_test {
-            Duration::from_secs(1)
-        } else {
-            Duration::from_micros(DEFAULT_DURATION)
-        };
+
         return Motor {
             step_pin,
             dir_pin,
             power_pin,
             pt_pin_1,
             pt_pin_2,
-            is_up_pin,
-            is_down_pin,
-            turn_delay: duration,
             is_turning: false,
             step_duration: Arc::new(AtomicU64::new(u64::from(SPEED_MAX - SPEED_MIN / 2))),
-
+            is_test
         };
     }
 
@@ -142,7 +130,7 @@ impl Motor {
         self.set_direction(dir);
         self.is_turning = true;
         let clone = self.clone();
-        let speed = self.step_duration.load(Ordering::SeqCst);
+        let speed = if self.is_test {1_000_000} else {self.step_duration.load(Ordering::SeqCst)};
         thread::spawn(move || {
             while running_clone.load(Ordering::SeqCst) {
                 clone.step_pin.set_value(1).unwrap();
@@ -176,10 +164,6 @@ impl Motor {
         self.pt_pin_1.export().expect("Failed to export pt1");
         self.pt_pin_2.export().expect("Failed to export pt2");
 
-        self.is_up_pin.as_ref().unwrap().export().expect("Failed to export pt2");
-        self.is_down_pin.as_ref().unwrap().export().expect("Failed to export pt2");
-
-
         // Sleep a moment to allow the pin privileges to update
         sleep(Duration::from_millis(100));
 
@@ -199,20 +183,6 @@ impl Motor {
         self.pt_pin_1.unexport().expect("Failed to un export pt2");
         self.pt_pin_2.unexport().expect("Failed to un export pt2");
 
-        self.is_up_pin.as_ref().unwrap().unexport().expect("Failed to unexport up");
-        self.is_down_pin.as_ref().unwrap().unexport().expect("Failed to unexport down");
-    }
-
-    #[allow(dead_code)]
-    pub fn turn_once(&self) {
-        self.power_motor(true);
-        for _x in 0..200 {
-            self.step_pin.set_value(1).unwrap();
-            sleep(self.turn_delay);
-            self.step_pin.set_value(0).unwrap();
-            sleep(self.turn_delay);
-        }
-        self.power_motor(false);
     }
 
 

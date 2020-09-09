@@ -2,6 +2,8 @@ use sysfs_gpio::{Direction, Pin, Error};
 
 #[allow(unused_imports)]
 use log::{info, warn, debug};
+use log::LevelFilter;
+use crate::LOGGER;
 
 #[derive(Clone)]
 pub struct MyPin {
@@ -12,6 +14,8 @@ pub struct MyPin {
 
 impl MyPin {
     pub fn new(number:u64, is_test:bool) -> MyPin {
+
+        debug!("new MyPin");
         let pin = if !is_test {
             Some(Pin::new(number))
         } else { None };
