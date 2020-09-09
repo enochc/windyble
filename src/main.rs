@@ -40,11 +40,12 @@ const GO_DOWN_PIN:Option<u64> = None;//Some(11);
 pub struct SimpleLogger;
 impl log::Log for SimpleLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Trace
+        metadata.level() <= Level::Debug
     }
 
     fn log(&self, record: &Record) {
         if self.enabled(record.metadata()) {
+            // println!("{:?}{:?}, {:?} - {}", record.file(), record.line(), record.level(), record.args());
             println!("{:?} - {}", record.level(), record.args());
         }
     }
@@ -55,7 +56,7 @@ pub static LOGGER: SimpleLogger = SimpleLogger;
 
 fn init_logging() -> Result<(), SetLoggerError> {
     log::set_logger(&LOGGER)
-        .map(|()| log::set_max_level(LevelFilter::Trace))
+        .map(|()| log::set_max_level(LevelFilter::Debug))
 }
 // done init logging
 
