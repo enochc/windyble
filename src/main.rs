@@ -20,21 +20,58 @@ use crate::my_pin::MyPin;
 mod motor;
 mod my_pin;
 
-const STEP: u64 = 11;//26;
-const DIR: u64 = 9;//19;
-const POWER_RELAY_PIN: u64 = 10;//13;
+#[derive(Clone, Copy)]
+pub struct GpioConfig {
+    step: u64,
+    dir: u64,
+    power_relay_pin: u64,
+    pt1:u64,
+    pt2:u64,
+    is_up_pin:Option<u8>,
+    is_down_pin:Option<u8>,
+    go_up_pin:Option<u8>,
+    go_down_pin:Option<u8>,
+}
 
-// Potentiometer pins
-const PT1: u64 = 6;//16;
-const PT2: u64 = 5;//20;
+const GPIO_HAT: GpioConfig = GpioConfig {
+    step: 11,
+    dir: 9,
+    power_relay_pin: 10,
+    pt1: 6,
+    pt2: 5,
+    is_up_pin: None,
+    is_down_pin: None,
+    go_up_pin: None,
+    go_down_pin: None
+};
 
-// delimiter pins
-const IS_UP_PIN: Option<u64> = None;//Some(5);
-const IS_DOWN_PIN: Option<u64> = None;//Some(6);
+const GPIO_MAIN: GpioConfig = GpioConfig {
+    step: 26,
+    dir: 19,
+    power_relay_pin: 13,
+    pt1: 16,
+    pt2: 20,
+    is_up_pin: Some(5),
+    is_down_pin: Some(6),
+    go_up_pin: Some(9),
+    go_down_pin: Some(11)
+};
 
-//physical up/down pins
-const GO_UP_PIN:Option<u64> = None;//Some(9);
-const GO_DOWN_PIN:Option<u64> = None;//Some(11);
+// const STEP: u64 = 11;//26;
+// const DIR: u64 = 9;//19;
+// const POWER_RELAY_PIN: u64 = 10;//13;
+//
+// // Potentiometer pins
+// const PT1: u64 = 6;//16;
+// const PT2: u64 = 5;//20;
+//
+// // delimiter pins
+// const IS_UP_PIN: Option<u64> = None;//Some(5);
+// const IS_DOWN_PIN: Option<u64> = None;//Some(6);
+//
+// //physical up/down pins
+// const GO_UP_PIN:Option<u64> = None;//Some(9);
+// const GO_DOWN_PIN:Option<u64> = None;//Some(11);
 
 // init logging
 pub struct SimpleLogger;
@@ -116,20 +153,28 @@ fn main_test() {
 ///     board test connect 192.168.0.43:3000
 /// ```
 fn main() {
+
+
     init_logging().expect("Failed to Init logger");
 
     let args: Vec<String> = env::args().collect();
+    let str_hat = String::from("hat");
+    let gpio_conf: GpioConfig = if args.contains(&str_hat) {
+        info!("Running HAT config");
+        GPIO_HAT
+    } else {
+        info!("Running MAIN config");
+        GPIO_MAIN
+    };
     let is_test = args.contains(&String::from("test"));
     let mut action = "";
     let mut addr = local_ipaddress::get().unwrap();
     // let current_move_state: Arc<AtomicU8> = Arc::new(AtomicU8::new(MOVE_STATE.free));
-    if args.len() ==1 { // no args specified only board command
-        // default to listen 3000
-        action = "listen";
-        addr = format!("{}:3000", addr);
-    }
+
+    let mut found:bool = false;
     for (i, name) in args.iter().enumerate() {
         if name == "connect" || name == "listen" {
+            found = true;
             action = name;
             let adr_val = args.get(i + 1);
             if adr_val.is_none() && addr.is_empty() {
@@ -149,6 +194,11 @@ fn main() {
             }
         }
     }
+    if !found { // connect or listen not specified
+        // default to listen 3000
+        action = "listen";
+        addr = format!("{}:3000", addr);
+    }
 
     /*
     pt is 0,1,2,3 potentiometer limiting for the motor 0.5 A, 1 A, 1.5 A, 2 A
@@ -167,11 +217,11 @@ fn main() {
 
     let mut pi_hive = Hive::new_from_str("SERVE", hive_props.as_str());
 
-    let step_pin = MyPin::new(STEP, is_test);
-    let dir_pin = MyPin::new(DIR, is_test);
-    let power_pin = MyPin::new(POWER_RELAY_PIN, is_test);
-    let pt_pin_1 = MyPin::new(PT1, is_test);
-    let pt_pin_2 = MyPin::new(PT2, is_test);
+    let step_pin = MyPin::new(gpio_conf.step, is_test);
+    let dir_pin = MyPin::new(gpio_conf.dir, is_test);
+    let power_pin = MyPin::new(gpio_conf.power_relay_pin, is_test);
+    let pt_pin_1 = MyPin::new(gpio_conf.pt1, is_test);
+    let pt_pin_2 = MyPin::new(gpio_conf.pt2, is_test);
 
     let mut motor = Motor::new(
         step_pin,
@@ -210,11 +260,11 @@ fn main() {
     let speed_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
     let pt_val_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
 
-    if IS_UP_PIN.is_some(){
-        start_input_listener(IS_UP_PIN.unwrap(),  {
+    if gpio_conf.is_up_pin.is_some(){
+        start_input_listener(gpio_conf.is_up_pin.unwrap(),  {
             let up_pair_clone = up_pair.clone();
             move |v| {
-                debug!("VAL {:?} is {:?}", IS_UP_PIN, v);
+                debug!("VAL {:?} is {:?}", gpio_conf.is_up_pin, v);
                 let (lock, cvar) = &*up_pair_clone;
                 let mut going_up = lock.lock().unwrap();
                 if v == 1 {
@@ -229,11 +279,12 @@ fn main() {
         });
     }
 
-    if IS_DOWN_PIN.is_some(){
-        start_input_listener(IS_DOWN_PIN.unwrap(), {
+    if gpio_conf.is_down_pin.is_some(){
+        start_input_listener(gpio_conf.is_down_pin.unwrap(), {
             let up_pair_clone = up_pair.clone();
+            let pin_num = gpio_conf.is_down_pin.unwrap().clone();
             move |v| {
-                debug!("VAL {:?} is {:?}", IS_DOWN_PIN, v);
+                debug!("VAL {:?} is {:?}", pin_num, v);
                 let (lock, cvar) = &*up_pair_clone;
                 let mut going_down = lock.lock().unwrap();
                 if v == 1 {
@@ -248,8 +299,8 @@ fn main() {
         });
     }
 
-    if GO_UP_PIN.is_some(){
-        start_input_listener(GO_UP_PIN.unwrap(), {
+    if gpio_conf.go_up_pin.is_some(){
+        start_input_listener(gpio_conf.go_up_pin.unwrap(), {
             let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
             move|v|{
                 debug!("GO UP PIN: {:?}", v);
@@ -262,8 +313,8 @@ fn main() {
         });
     }
 
-    if GO_DOWN_PIN.is_some(){
-        start_input_listener(GO_DOWN_PIN.unwrap(), {
+    if gpio_conf.go_down_pin.is_some(){
+        start_input_listener(gpio_conf.go_down_pin.unwrap(), {
             let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
             move|v|{
                 debug!("GO DOWN PIN: {:?}", v);
@@ -316,8 +367,9 @@ fn main() {
     motor.init();
 
     // Handler for potentiometer
+    // todo task::spawn here doesn't work.. figure out why
     let motor_clone3 = motor.clone();
-    task::spawn(async move {
+    thread::spawn( move ||{
         let (lock, cvar) = &*pt_val_pair;
         let mut pt = lock.lock().unwrap();
         loop {
@@ -373,7 +425,7 @@ fn main() {
 
 #[allow(unused_variables)]
 #[cfg(target_arch = "x86_64")]
-fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
+fn start_input_listener(num: u8, func: impl Fn(u8) + Send + Sync + 'static) {
     println!("starting on non x86");
 }
 
@@ -389,10 +441,10 @@ use rppal::gpio::Level::High;
 // TODO this works well enough as is, but is not the best solution. preferably we should
 //  start a single thread and run each listeners in a task instead of starting a new thread
 //  for every input
-fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
+fn start_input_listener(num: u8, func: impl Fn(u8) + Send + Sync + 'static) {
     thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(6).unwrap().into_input_pulldown();
+        let pin = gpio.get(num).unwrap().into_input_pulldown();
         let mut last_val = if pin.read() == High {1} else {0};
 
         info!("Start listening to pin {}", num);
