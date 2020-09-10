@@ -20,7 +20,7 @@ pub struct Motor {
     power_pin: MyPin,
     pt_pin_1: MyPin,
     pt_pin_2: MyPin,
-    is_turning: bool,
+    running: Arc<AtomicBool>,//::new(AtomicBool::new(true));
     step_duration: Arc<AtomicU64>,
     is_test: bool,
 }
@@ -72,7 +72,7 @@ impl Motor {
             power_pin,
             pt_pin_1,
             pt_pin_2,
-            is_turning: false,
+            running: Arc::new(AtomicBool::new(false)),
             step_duration: Arc::new(AtomicU64::new(u64::from(SPEED_MAX - SPEED_MIN / 2))),
             is_test
         };
@@ -115,24 +115,26 @@ impl Motor {
         let val = if on { 0 } else { 1 };
         self.power_pin.set_value(val).expect("Failed to change motor power");
     }
+    pub fn is_running(&self)->bool{
+        return self.running.load(Ordering::SeqCst);
+    }
 
 
-    pub fn turn(&mut self, dir: u8) -> Option<Arc<AtomicBool>> {
-        if self.is_turning {
+    pub fn turn(&mut self, dir: u8) -> bool {
+        if self.is_running() {
             info!("Already turning!");
-            return None::<Arc<AtomicBool>>;
+            return false;
         }
 
         self.power_motor(true);
 
-        let running = Arc::new(AtomicBool::new(true));
-        let running_clone = running.clone();
         self.set_direction(dir);
-        self.is_turning = true;
         let clone = self.clone();
         let speed = if self.is_test {1_000_000} else {self.step_duration.load(Ordering::SeqCst)};
+        self.running.store(true, Ordering::SeqCst);
+        let run_clone = self.running.clone();
         thread::spawn(move || {
-            while running_clone.load(Ordering::SeqCst) {
+            while run_clone.load(Ordering::SeqCst) {
                 clone.step_pin.set_value(1).unwrap();
                 sleep(Duration::from_micros(speed));
                 clone.step_pin.set_value(0).unwrap();
@@ -140,12 +142,12 @@ impl Motor {
             }
             info!("Motor Done turning");
         });
-        return Some(running);
+        return true;
     }
 
     pub fn stop(&mut self) {
         info!("....... STOP");
-        self.is_turning = false;
+        self.running.store(false, Ordering::SeqCst);
         self.step_pin.set_value(0).unwrap();
         self.power_motor(false);
     }

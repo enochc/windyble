@@ -4,7 +4,6 @@ use std::sync::atomic::{AtomicU8, Ordering, AtomicBool};
 
 use std::time::Duration;
 use async_std::sync::Arc;
-use async_std::task;
 
 
 use futures::executor::block_on;
@@ -22,11 +21,11 @@ mod my_pin;
 
 #[derive(Clone, Copy)]
 pub struct GpioConfig {
-    step: u64,
-    dir: u64,
-    power_relay_pin: u64,
-    pt1:u64,
-    pt2:u64,
+    step: u8,
+    dir: u8,
+    power_relay_pin: u8,
+    pt1:u8,
+    pt2:u8,
     is_up_pin:Option<u8>,
     is_down_pin:Option<u8>,
     go_up_pin:Option<u8>,
@@ -56,22 +55,6 @@ const GPIO_MAIN: GpioConfig = GpioConfig {
     go_up_pin: Some(9),
     go_down_pin: Some(11)
 };
-
-// const STEP: u64 = 11;//26;
-// const DIR: u64 = 9;//19;
-// const POWER_RELAY_PIN: u64 = 10;//13;
-//
-// // Potentiometer pins
-// const PT1: u64 = 6;//16;
-// const PT2: u64 = 5;//20;
-//
-// // delimiter pins
-// const IS_UP_PIN: Option<u64> = None;//Some(5);
-// const IS_DOWN_PIN: Option<u64> = None;//Some(6);
-//
-// //physical up/down pins
-// const GO_UP_PIN:Option<u64> = None;//Some(9);
-// const GO_DOWN_PIN:Option<u64> = None;//Some(11);
 
 // init logging
 pub struct SimpleLogger;
@@ -401,14 +384,13 @@ fn main() {
         turning = cvar.wait(turning).unwrap();
         if *turning {
             let dir = CURRENT_DIRECTION.load(Ordering::SeqCst);
-            let running = motor.turn(dir);
+            motor.turn(dir);
 
             while *turning {
                 //we wait until we receive a stop turn message
                 turning = cvar.wait(turning).unwrap();
                 if !*turning {
                     motor.stop();
-                    running.unwrap().store(false, Ordering::SeqCst);
                     break;
                 }
 

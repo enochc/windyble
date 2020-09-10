@@ -3,21 +3,23 @@ use sysfs_gpio::{Direction, Pin, Error};
 #[allow(unused_imports)]
 use log::{info, warn, debug};
 use log::LevelFilter;
-use crate::LOGGER;
+
+#[cfg(target_arch = "arm")]
+use rppal::gpio::{Gpio, OutputPin};
+
 
 #[derive(Clone)]
 pub struct MyPin {
     pub pin: Option<Pin>,
-    pub number:u64,
+    pub number:u8,
     pub is_test:bool
 }
 
 impl MyPin {
-    pub fn new(number:u64, is_test:bool) -> MyPin {
-
+    pub fn new(number:u8, is_test:bool) -> MyPin {
         debug!("new MyPin");
         let pin = if !is_test {
-            Some(Pin::new(number))
+            Some(Pin::new(number.into()))
         } else { None };
         return MyPin {
             pin,
@@ -25,6 +27,7 @@ impl MyPin {
             is_test
         };
     }
+
     pub fn get_value(&self)-> sysfs_gpio::Result<u8> {
         // self.pin.unwrap().get_value()
         return match self.pin {
