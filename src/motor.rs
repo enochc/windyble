@@ -12,6 +12,7 @@ use sysfs_gpio::{Direction};
 
 #[allow(unused_imports)]
 use log::{info, warn, debug};
+use crate::PinDir;
 
 #[derive(Clone)]
 pub struct Motor {
@@ -107,6 +108,8 @@ impl Motor {
                 self.pt_pin_2.set_direction(Direction::In).expect("Failed to set direction on pt2 pin");
             }
         }
+        // self.pt_pin_1.set_direction(Direction::Low).expect("Failed to set direction on pt pin1");
+        // self.pt_pin_2.set_direction(Direction::Low).expect("Failed to set direction on pt pin2");
     }
 
     fn power_motor(&self, on: bool) {
@@ -120,7 +123,7 @@ impl Motor {
     }
 
 
-    pub fn turn(&mut self, dir: u8) -> bool {
+    pub fn turn(&mut self, dir: PinDir) -> bool {
         if self.is_running() {
             info!("Already turning!");
             return false;
@@ -153,9 +156,9 @@ impl Motor {
     }
 
 
-    pub fn set_direction(&self, dir: u8) {
-        info!("SET DIRECTION {:?}", dir);
-        self.dir_pin.set_value(dir).expect("Failed to set direction");
+    pub fn set_direction(&self, dir: PinDir) {
+        info!("SET DIRECTION {:?}", dir.as_u8());
+        self.dir_pin.set_value(dir.as_u8()).expect("Failed to set direction");
     }
 
     pub fn init(&self) {
@@ -181,26 +184,12 @@ impl Motor {
     pub fn done(&self) {
         self.dir_pin.unexport().expect("Failed to un un export DIR pin");
         self.step_pin.unexport().expect("Failed to un un export STEP pin");
-        self.power_pin.unexport().expect("Failed to un un export PWR pin");
-        self.pt_pin_1.unexport().expect("Failed to un export pt2");
+        // dont une-export the power pin or the 12 volt relay will close,
+        // best to just leave this on for now
+        //self.power_pin.unexport().expect("Failed to un un export PWR pin");
+        self.pt_pin_1.unexport().expect("Failed to un export pt1");
         self.pt_pin_2.unexport().expect("Failed to un export pt2");
-
+        info!("En-exported pins for motor");
     }
 
-
-    // fn poll(&self, pin_num: u64) -> sysfs_gpio::Result<()> {
-    //     let input = Pin::new(pin_num);
-    //     input.with_exported(|| {
-    //         input.set_direction(Direction::In)?;
-    //         let mut prev_val: u8 = 255;
-    //         loop {
-    //             let val = input.get_value()?;
-    //             if val != prev_val {
-    //                 println!("Pin State: {}", if val == 0 { "Low" } else { "High" });
-    //                 prev_val = val;
-    //             }
-    //             sleep(Duration::from_millis(10));
-    //         }
-    //     })
-    // }
 }

@@ -80,11 +80,23 @@ fn init_logging() -> Result<(), SetLoggerError> {
 }
 // done init logging
 
-struct Dir;
-
-impl Dir {
-    const CLOCKWISE: u8 = 1; // DOWN
-    const COUNTER_CLOCKWISE: u8 = 0; // UO
+// struct Dir;
+//
+// impl Dir {
+//     const CLOCKWISE: u8 = 1; // DOWN
+//     const COUNTER_CLOCKWISE: u8 = 0; // UO
+// }
+pub enum PinDir{
+    Clockwise,
+    CounterClockwise,
+}
+impl PinDir{
+    pub fn as_u8(&self) ->u8{
+        return match self {
+            PinDir::Clockwise => 1,
+            _ => 0
+        }
+    }
 }
 
 struct MoveState {
@@ -102,6 +114,22 @@ const MOVE_STATE: MoveState = MoveState {
 static CURRENT_DIRECTION: AtomicU8 = AtomicU8::new(0);
 static CURRENT_MOVE_STATE: AtomicU8 = AtomicU8::new(MOVE_STATE.free);
 
+pub fn store_direction(d:PinDir){
+    match d{
+        PinDir::Clockwise =>{
+            CURRENT_DIRECTION.store(d.as_u8(), Ordering::Relaxed)
+        },
+        PinDir::CounterClockwise => {
+            CURRENT_DIRECTION.store(d.as_u8(), Ordering::Relaxed)
+        }
+    }
+}
+pub fn current_direction()->PinDir {
+    match CURRENT_DIRECTION.load(Ordering::Relaxed) {
+        1=> PinDir::Clockwise,
+        _=> PinDir::CounterClockwise
+    }
+}
 
 #[allow(dead_code)]
 fn main_test() {
@@ -206,7 +234,7 @@ fn main() {
     let pt_pin_1 = MyPin::new(gpio_conf.pt1, is_test);
     let pt_pin_2 = MyPin::new(gpio_conf.pt2, is_test);
 
-    let mut motor = Motor::new(
+    let motor = Motor::new(
         step_pin,
         dir_pin,
         power_pin,
@@ -215,22 +243,26 @@ fn main() {
         is_test,
     );
 
-    let turn_motor = move |direction:Option<u8>, do_turn:&(Mutex<bool>, Condvar)| {
+    let turn_motor = move |direction:Option<PinDir>, do_turn:&(Mutex<bool>, Condvar)| {
         let (lock, cvar) = do_turn;
         let mut turning = lock.lock().unwrap();
         let current_state = CURRENT_MOVE_STATE.load(Ordering::SeqCst);
         match direction {
-            Some(dir) => {
-                if dir == Dir::COUNTER_CLOCKWISE && current_state == MOVE_STATE.up {
+            Some(PinDir::CounterClockwise) => {
+                if current_state == MOVE_STATE.up {
                     info!("Already UP!!");
-                    return;
-                } else if dir == Dir::CLOCKWISE && current_state == MOVE_STATE.down {
-                    info!("Already DOWN!!");
-                    return;
+                } else {
+                    store_direction(PinDir::CounterClockwise);
+                    *turning = true;
                 }
-
-                CURRENT_DIRECTION.store(dir, Ordering::SeqCst);
-                *turning = true;
+            },
+            Some(PinDir::Clockwise) => {
+                if current_state == MOVE_STATE.down {
+                    info!("Already DOWN!!");
+                }else{
+                    store_direction(PinDir::Clockwise);
+                    *turning = true;
+                }
             },
             _ => {
                 *turning = false;
@@ -288,7 +320,7 @@ fn main() {
             move|v|{
                 debug!("GO UP PIN: {:?}", v);
                 if v == 1 {
-                    &turn_motor(Some(Dir::COUNTER_CLOCKWISE), &*up_pair2);
+                    &turn_motor(Some(PinDir::CounterClockwise), &*up_pair2);
                 } else {
                     &turn_motor(None, &*up_pair2);
                 }
@@ -302,7 +334,7 @@ fn main() {
             move|v|{
                 debug!("GO DOWN PIN: {:?}", v);
                 if v == 1 {
-                    &turn_motor(Some(Dir::CLOCKWISE), &*up_pair2);
+                    &turn_motor(Some(PinDir::Clockwise), &*up_pair2);
                 } else {
                     &turn_motor(None, &*up_pair2);
                 }
@@ -322,14 +354,14 @@ fn main() {
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
     pi_hive.get_mut_property("moveup").unwrap().on_changed.connect(move |value| {
         let do_go_up = value.unwrap().as_bool().unwrap();
-        let dir = if do_go_up {Some(Dir::COUNTER_CLOCKWISE)} else {None};
+        let dir = if do_go_up {Some(PinDir::CounterClockwise )} else {None};
         &turn_motor(dir, &*up_pair2);
     });
 
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
     pi_hive.get_mut_property("movedown").unwrap().on_changed.connect(move |value| {
         let do_go_down = value.unwrap().as_bool().unwrap();
-        let dir = if do_go_down {Some(Dir::CLOCKWISE)} else {None};
+        let dir = if do_go_down {Some(PinDir::Clockwise)} else {None};
         turn_motor(dir, &*up_pair2);
     });
 
@@ -373,34 +405,50 @@ fn main() {
         };
     });
 
-    let (lock, cvar) = &*up_pair;
-    let mut turning = lock.lock().unwrap();
+
+    let running = Arc::new(AtomicBool::new(true));
+    simple_signal::set_handler(&[Signal::Int, Signal::Term], {
+        let running = running.clone();
+
+        move |_| {
+            println!("Stopping...");
+            running.store(false, Ordering::SeqCst);
+        }
+    });
 
     // Loops forever !!!
-    // let mut motor_clone = motor.clone();
-    while !*turning {
-        //we wait until we receive a turn message
-        println!("waiting to turn");
-        turning = cvar.wait(turning).unwrap();
-        if *turning {
-            let dir = CURRENT_DIRECTION.load(Ordering::SeqCst);
-            motor.turn(dir);
+    let mut motor_clone = motor.clone();
+    thread::spawn(move ||{
+        let (lock, cvar) = &*up_pair;
+        let mut turning = lock.lock().unwrap();
 
-            while *turning {
-                //we wait until we receive a stop turn message
-                turning = cvar.wait(turning).unwrap();
-                if !*turning {
-                    motor.stop();
-                    break;
+        while !*turning  {
+            //we wait until we receive a turn message
+            println!("waiting to turn");
+            let mg  = *turning;
+            turning = cvar.wait(turning).unwrap();
+            if *turning {
+                let dir = current_direction();// CURRENT_DIRECTION.load(Ordering::SeqCst);
+                motor_clone.turn(dir);
+
+                while *turning {
+                    //we wait until we receive a stop turn message
+                    turning = cvar.wait(turning).unwrap();
+                    if !*turning {
+                        motor_clone.stop();
+                        break;
+                    }
                 }
-
-
             }
         }
-    }
+    });
 
-    // this never runs, the pins are never exported because the only way to end this loop
-    // Is to kill the service
+    while running.load(Ordering::SeqCst) {
+        // loop while were running
+        sleep(Duration::from_millis(100))
+    };
+
+    // Any cleanup needs to happen here
     motor.done();
     info!("Main Done");
 }
@@ -418,6 +466,7 @@ use sysfs_gpio::{Direction, Pin};
 use rppal::gpio::{Gpio, Trigger};
 #[cfg(target_arch = "arm")]
 use rppal::gpio::Level::High;
+use std::thread::sleep;
 
 #[cfg(target_arch = "arm")]
 // TODO this works well enough as is, but is not the best solution. preferably we should

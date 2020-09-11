@@ -2,7 +2,6 @@ use sysfs_gpio::{Direction, Pin, Error};
 
 #[allow(unused_imports)]
 use log::{info, warn, debug};
-use log::LevelFilter;
 
 #[cfg(target_arch = "arm")]
 use rppal::gpio::{Gpio, OutputPin};
@@ -21,6 +20,7 @@ impl MyPin {
         let pin = if !is_test {
             Some(Pin::new(number.into()))
         } else { None };
+        pin.unwrap().unexport().expect(&format!("Failed to unexport pin {:?}", number));
         return MyPin {
             pin,
             number,
