@@ -1,0 +1,15 @@
+[Unit]
+Description=My Windyble Service
+#Requires=network-online.target
+#After=network-online.target
+#After=multi-user.target
+Requires=systemd-networkd-wait-online.service
+After=systemd-networkd-wait-online.service
+
+[Service]
+Type=idle
+ExecStartPre=/bin/sleep 5
+ExecStart=/home/pi/board/board/target/arm-unknown-linux-gnueabihf/release/board &
+
+[Install]
+WantedBy=multi-user.target

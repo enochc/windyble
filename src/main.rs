@@ -5,19 +5,28 @@ use std::sync::atomic::{AtomicU8, Ordering, AtomicBool};
 use std::time::Duration;
 use async_std::sync::Arc;
 
-
 use futures::executor::block_on;
 use hive::hive::Hive;
 use local_ipaddress;
-use log::{debug, info, LevelFilter, SetLoggerError, warn};
-use log::{Level, Metadata, Record};
+
+use log::{debug, info, SetLoggerError, warn};
 use simple_signal::{self, Signal};
 
 use crate::motor::Motor;
-use crate::my_pin::MyPin;
 
 mod motor;
-mod my_pin;
+#[cfg(not(target_arch = "arm"))]
+mod mock_gpio;
+
+#[cfg(target_arch = "arm")]
+use rppal::gpio::Level::High;
+#[cfg(target_arch = "arm")]
+use rppal::gpio::{Gpio};
+#[cfg(not(target_arch = "arm"))]
+use crate::mock_gpio::{Gpio};
+#[cfg(not(target_arch = "arm"))]
+use crate::mock_gpio::Level::High;
+
 
 #[derive(Clone, Copy)]
 pub struct GpioConfig {
@@ -32,16 +41,16 @@ pub struct GpioConfig {
     go_down_pin:Option<u8>,
 }
 
-const GPIO_HAT: GpioConfig = GpioConfig {
+pub const GPIO_HAT: GpioConfig = GpioConfig {
     step: 11,
     dir: 9,
     power_relay_pin: 10,
     pt1: 6,
     pt2: 5,
-    is_up_pin: None,
-    is_down_pin: None,
-    go_up_pin: None,
-    go_down_pin: None
+    is_up_pin: Some(2),
+    is_down_pin: Some(3),
+    go_up_pin: Some(18),
+    go_down_pin: Some(17)
 };
 
 const GPIO_MAIN: GpioConfig = GpioConfig {
@@ -50,85 +59,46 @@ const GPIO_MAIN: GpioConfig = GpioConfig {
     power_relay_pin: 13,
     pt1: 16,
     pt2: 20,
-    is_up_pin: Some(5),
-    is_down_pin: Some(6),
-    go_up_pin: Some(9),
-    go_down_pin: Some(11)
+    is_up_pin: None,// Some(5),
+    is_down_pin: None, //Some(6),
+    go_up_pin: None, //Some(9),
+    go_down_pin: None, //Some(11)
 };
 
 // init logging
-pub struct SimpleLogger;
-impl log::Log for SimpleLogger {
-    fn enabled(&self, metadata: &Metadata) -> bool {
-        metadata.level() <= Level::Debug
-    }
-
-    fn log(&self, record: &Record) {
-        if self.enabled(record.metadata()) {
-            // println!("{:?}{:?}, {:?} - {}", record.file(), record.line(), record.level(), record.args());
-            println!("{:?} - {}", record.level(), record.args());
-        }
-    }
-
-    fn flush(&self) {}
-}
-pub static LOGGER: SimpleLogger = SimpleLogger;
 
 fn init_logging() -> Result<(), SetLoggerError> {
-    log::set_logger(&LOGGER)
-        .map(|()| log::set_max_level(LevelFilter::Debug))
+
+    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+    Ok(())
 }
 // done init logging
 
-// struct Dir;
-//
-// impl Dir {
-//     const CLOCKWISE: u8 = 1; // DOWN
-//     const COUNTER_CLOCKWISE: u8 = 0; // UO
-// }
-pub enum PinDir{
-    Clockwise,
-    CounterClockwise,
-}
-impl PinDir{
-    pub fn as_u8(&self) ->u8{
-        return match self {
-            PinDir::Clockwise => 1,
-            _ => 0
-        }
-    }
+
+struct PinDir;
+impl PinDir {
+    const CLOCKWISE: u8 =1;
+    const COUNTER_CLOCKWISE:u8 = 0;
 }
 
-struct MoveState {
-    free: u8,
-    up: u8,
-    down: u8,
+
+// #[non_exhaustive]
+struct MoveState;
+impl MoveState{
+    const FREE: u8 = 0;
+    const UP:u8  = 1;
+    const DOWN:u8 = 2;
 }
 
-const MOVE_STATE: MoveState = MoveState {
-    free: 0,
-    up: 1,
-    down: 2,
-};
 
 static CURRENT_DIRECTION: AtomicU8 = AtomicU8::new(0);
-static CURRENT_MOVE_STATE: AtomicU8 = AtomicU8::new(MOVE_STATE.free);
+static CURRENT_MOVE_STATE: AtomicU8 = AtomicU8::new(MoveState::FREE);
 
-pub fn store_direction(d:PinDir){
-    match d{
-        PinDir::Clockwise =>{
-            CURRENT_DIRECTION.store(d.as_u8(), Ordering::Relaxed)
-        },
-        PinDir::CounterClockwise => {
-            CURRENT_DIRECTION.store(d.as_u8(), Ordering::Relaxed)
-        }
-    }
+pub fn store_direction(d:u8){
+    CURRENT_DIRECTION.store(d, Ordering::Relaxed)
 }
-pub fn current_direction()->PinDir {
-    match CURRENT_DIRECTION.load(Ordering::Relaxed) {
-        1=> PinDir::Clockwise,
-        _=> PinDir::CounterClockwise
-    }
+pub fn current_direction()-> u8 {
+    CURRENT_DIRECTION.load(Ordering::Relaxed)
 }
 
 #[allow(dead_code)]
@@ -170,13 +140,7 @@ fn main() {
 
     let args: Vec<String> = env::args().collect();
     let str_hat = String::from("hat");
-    let gpio_conf: GpioConfig = if args.contains(&str_hat) {
-        info!("Running HAT config");
-        GPIO_HAT
-    } else {
-        info!("Running MAIN config");
-        GPIO_MAIN
-    };
+
     let is_test = args.contains(&String::from("test"));
     let mut action = "";
     let mut addr = local_ipaddress::get().unwrap();
@@ -228,39 +192,41 @@ fn main() {
 
     let mut pi_hive = Hive::new_from_str("SERVE", hive_props.as_str());
 
-    let step_pin = MyPin::new(gpio_conf.step, is_test);
-    let dir_pin = MyPin::new(gpio_conf.dir, is_test);
-    let power_pin = MyPin::new(gpio_conf.power_relay_pin, is_test);
-    let pt_pin_1 = MyPin::new(gpio_conf.pt1, is_test);
-    let pt_pin_2 = MyPin::new(gpio_conf.pt2, is_test);
+    let gpio_conf: GpioConfig = if args.contains(&str_hat) {
+        info!("Running HAT config");
+        GPIO_HAT
+    } else {
+        info!("Running MAIN config");
+        GPIO_MAIN
+    };
 
-    let motor = Motor::new(
-        step_pin,
-        dir_pin,
-        power_pin,
-        pt_pin_1,
-        pt_pin_2,
-        is_test,
-    );
+    // let step_pin:MyPin = MyPin::new(gpio_conf.step, is_test);
+    // let dir_pin:MyPin = MyPin::new(gpio_conf.dir, is_test);
+    // let power_pin:MyPin = MyPin::new(gpio_conf.power_relay_pin, is_test);
+    // let pt_pin_1 = MyPin::new(gpio_conf.pt1, is_test);
+    // let pt_pin_2 = MyPin::new(gpio_conf.pt2, is_test);
 
-    let turn_motor = move |direction:Option<PinDir>, do_turn:&(Mutex<bool>, Condvar)| {
+    let motor: Motor = Motor::new(gpio_conf, is_test);
+
+    let turn_motor = move |direction:Option<u8>, do_turn:&(Mutex<bool>, Condvar)| {
         let (lock, cvar) = do_turn;
+        // TODO PoisonError
         let mut turning = lock.lock().unwrap();
         let current_state = CURRENT_MOVE_STATE.load(Ordering::SeqCst);
         match direction {
-            Some(PinDir::CounterClockwise) => {
-                if current_state == MOVE_STATE.up {
+            Some(PinDir::COUNTER_CLOCKWISE) => {
+                if current_state == MoveState::UP {
                     info!("Already UP!!");
                 } else {
-                    store_direction(PinDir::CounterClockwise);
+                    store_direction(PinDir::COUNTER_CLOCKWISE);
                     *turning = true;
                 }
             },
-            Some(PinDir::Clockwise) => {
-                if current_state == MOVE_STATE.down {
+            Some(PinDir::CLOCKWISE) => {
+                if current_state == MoveState::DOWN {
                     info!("Already DOWN!!");
                 }else{
-                    store_direction(PinDir::Clockwise);
+                    store_direction(PinDir::CLOCKWISE);
                     *turning = true;
                 }
             },
@@ -284,10 +250,10 @@ fn main() {
                 let mut going_up = lock.lock().unwrap();
                 if v == 1 {
                     // Reached the top stop
-                    CURRENT_MOVE_STATE.store(MOVE_STATE.up, Ordering::SeqCst);
+                    CURRENT_MOVE_STATE.store(MoveState::UP, Ordering::SeqCst);
                     *going_up = false;
                 } else {
-                    CURRENT_MOVE_STATE.store(MOVE_STATE.free, Ordering::SeqCst);
+                    CURRENT_MOVE_STATE.store(MoveState::FREE, Ordering::SeqCst);
                 }
                 cvar.notify_one();
             }
@@ -304,10 +270,10 @@ fn main() {
                 let mut going_down = lock.lock().unwrap();
                 if v == 1 {
                     // Reached the bottom stop
-                    CURRENT_MOVE_STATE.store(MOVE_STATE.down, Ordering::SeqCst);
+                    CURRENT_MOVE_STATE.store(MoveState::DOWN, Ordering::SeqCst);
                     *going_down = false;
                 } else {
-                    CURRENT_MOVE_STATE.store(MOVE_STATE.free, Ordering::SeqCst);
+                    CURRENT_MOVE_STATE.store(MoveState::FREE, Ordering::SeqCst);
                 }
                 cvar.notify_one();
             }
@@ -320,7 +286,7 @@ fn main() {
             move|v|{
                 debug!("GO UP PIN: {:?}", v);
                 if v == 1 {
-                    &turn_motor(Some(PinDir::CounterClockwise), &*up_pair2);
+                    &turn_motor(Some(PinDir::COUNTER_CLOCKWISE), &*up_pair2);
                 } else {
                     &turn_motor(None, &*up_pair2);
                 }
@@ -334,7 +300,7 @@ fn main() {
             move|v|{
                 debug!("GO DOWN PIN: {:?}", v);
                 if v == 1 {
-                    &turn_motor(Some(PinDir::Clockwise), &*up_pair2);
+                    &turn_motor(Some(PinDir::CLOCKWISE), &*up_pair2);
                 } else {
                     &turn_motor(None, &*up_pair2);
                 }
@@ -354,14 +320,14 @@ fn main() {
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
     pi_hive.get_mut_property("moveup").unwrap().on_changed.connect(move |value| {
         let do_go_up = value.unwrap().as_bool().unwrap();
-        let dir = if do_go_up {Some(PinDir::CounterClockwise )} else {None};
+        let dir = if do_go_up {Some(PinDir::COUNTER_CLOCKWISE)} else {None};
         &turn_motor(dir, &*up_pair2);
     });
 
     let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
     pi_hive.get_mut_property("movedown").unwrap().on_changed.connect(move |value| {
         let do_go_down = value.unwrap().as_bool().unwrap();
-        let dir = if do_go_down {Some(PinDir::Clockwise)} else {None};
+        let dir = if do_go_down {Some(PinDir::CLOCKWISE)} else {None};
         turn_motor(dir, &*up_pair2);
     });
 
@@ -374,9 +340,9 @@ fn main() {
     });
 
     thread::spawn(move || {
-        println!("run Hive");
+        info!("run Hive");
         block_on(pi_hive.run());
-        println!("Hive run");
+        info!("Hive run");
     });
 
     motor.init();
@@ -417,7 +383,7 @@ fn main() {
     });
 
     // Loops forever !!!
-    let mut motor_clone = motor.clone();
+    let motor_clone = motor.clone();
     thread::spawn(move ||{
         let (lock, cvar) = &*up_pair;
         let mut turning = lock.lock().unwrap();
@@ -425,7 +391,6 @@ fn main() {
         while !*turning  {
             //we wait until we receive a turn message
             println!("waiting to turn");
-            let mg  = *turning;
             turning = cvar.wait(turning).unwrap();
             if *turning {
                 let dir = current_direction();// CURRENT_DIRECTION.load(Ordering::SeqCst);
@@ -445,7 +410,7 @@ fn main() {
 
     while running.load(Ordering::SeqCst) {
         // loop while were running
-        sleep(Duration::from_millis(100))
+        thread::sleep(Duration::from_millis(100))
     };
 
     // Any cleanup needs to happen here
@@ -453,29 +418,21 @@ fn main() {
     info!("Main Done");
 }
 
-#[allow(unused_variables)]
-#[cfg(target_arch = "x86_64")]
-fn start_input_listener(num: u8, func: impl Fn(u8) + Send + Sync + 'static) {
-    println!("starting on non x86");
-}
+// #[allow(unused_variables)]
+// #[cfg(not(target_arch = "arm"))]
+// fn start_input_listener(num: u8, func: impl Fn(u8) + Send + Sync + 'static) {
+//     println!("starting on x86");
+// }
 
-#[cfg(target_arch = "arm")]
-use sysfs_gpio::{Direction, Pin};
 
-#[cfg(target_arch = "arm")]
-use rppal::gpio::{Gpio, Trigger};
-#[cfg(target_arch = "arm")]
-use rppal::gpio::Level::High;
-use std::thread::sleep;
 
-#[cfg(target_arch = "arm")]
-// TODO this works well enough as is, but is not the best solution. preferably we should
-//  start a single thread and run each listeners in a task instead of starting a new thread
-//  for every input
+
+// #[cfg(target_arch = "arm")]
 fn start_input_listener(num: u8, func: impl Fn(u8) + Send + Sync + 'static) {
     thread::spawn(move || {
         let gpio = Gpio::new().unwrap();
-        let pin = gpio.get(num).unwrap().into_input_pulldown();
+        let mut pin = gpio.get(num).unwrap().into_input_pulldown();
+        pin.set_reset_on_drop(false);
         let mut last_val = if pin.read() == High {1} else {0};
 
         info!("Start listening to pin {}", num);
@@ -489,31 +446,5 @@ fn start_input_listener(num: u8, func: impl Fn(u8) + Send + Sync + 'static) {
 
             thread::sleep(Duration::from_millis(30))
         };
-
-
     });
 }
-
-// orig
-// fn start_input_listener(num: u64, func: impl Fn(u8) + Send + Sync + 'static) {
-//     thread::spawn(move || {
-//         info!("Start listening to pin {}", num);
-//         let input = Pin::new(num);
-//         input.with_exported(|| {
-//             // the sleep here is a workaround on an async bug in the pin export code.
-//             thread::sleep(Duration::from_millis(100));
-//             input.set_active_low(true).expect("Failed to set active low");
-//             input.set_direction(Direction::In)?;
-//             let mut prev_val: u8 = 255;
-//             loop {
-//                 let val = input.get_value()?;
-//                 if val != prev_val {
-//                     info!("<< input changed: on{} to {}", num, val);
-//                     prev_val = val;
-//                     func(val);
-//                 }
-//                 thread::sleep(Duration::from_millis(30));
-//             }
-//         })
-//     });
-// }

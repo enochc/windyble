@@ -1,0 +1,43 @@
+#!/bin/bash
+### BEGIN INIT INFO
+# Provides:          windyble
+# Required-Start:    $remote_fs $syslog
+# Required-Stop:     $remote_fs $syslog
+# Default-Start:     2 3 4 5
+# Default-Stop:      0 1 6
+# Short-Description: Start windyble daemon at boot time
+# Description:       Enable service provided by daemon.
+### END INIT INFO
+. /etc/init.d/functions
+start() {
+    # code to start app comes here
+    # example: daemon program_name &
+
+    /home/pi/board/board/target/arm-unknown-linux-gnueabihf/release/board &
+}
+stop() {
+    # code to stop app comes here
+    # example: killproc program_name
+    killall board
+}
+
+case "$1" in
+    start)
+       start
+       ;;
+    stop)
+       stop
+       ;;
+    restart)
+       stop
+       start
+       ;;
+    status)
+       # code to check status of app comes here
+       # example: status program_name
+       ;;
+    *)
+       echo "Usage: $0 {start|stop|status|restart}"
+esac
+
+exit 0

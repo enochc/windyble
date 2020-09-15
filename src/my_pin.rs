@@ -3,8 +3,6 @@ use sysfs_gpio::{Direction, Pin, Error};
 #[allow(unused_imports)]
 use log::{info, warn, debug};
 
-#[cfg(target_arch = "arm")]
-use rppal::gpio::{Gpio, OutputPin};
 
 
 #[derive(Clone)]
