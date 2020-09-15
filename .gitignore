@@ -4,3 +4,6 @@
 target/debug
 target/release
 target/arm-unknown-linux-gnueabihf/release/*/
+output.log
+.DS_Store
+build_for_pi.sh
