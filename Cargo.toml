@@ -1,5 +1,5 @@
 [package]
-name = "board"
+name = "windyble"
 version = "0.1.0"
 authors = ["Enoch <mrenoch@gmail.com>"]
 edition = "2018"

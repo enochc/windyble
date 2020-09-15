@@ -130,8 +130,8 @@ fn main_test() {
 /// # Examples
 ///
 /// ```
-///     board test listen 3000
-///     board test connect 192.168.0.43:3000
+///     windyble test listen 3000
+///     windyble test connect 192.168.0.43:3000
 /// ```
 fn main() {
 
