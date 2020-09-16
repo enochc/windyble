@@ -38,9 +38,9 @@ pub struct Motor {
 //     }
 // }
 
-const SPEED_MIN: u64 = 350;
+const SPEED_MIN: u64 = 300;
 const SPEED_MAX: u64 = 1_000;
-pub const DEFAULT_DURATION: u64 = 500;
+pub const DEFAULT_DURATION: u64 = 400;
 
 
 impl Motor {

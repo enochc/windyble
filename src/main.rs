@@ -177,6 +177,7 @@ fn main() {
 
     /*
     pt is 0,1,2,3 potentiometer limiting for the motor 0.5 A, 1 A, 1.5 A, 2 A
+    default is 2 (1.5 amps)
      */
     let hive_props = format!("
     {} = {:?}
@@ -184,7 +185,7 @@ fn main() {
     moveup = false
     movedown = false
     speed = {}
-    pt = 0
+    pt = 2
     ", action, addr, motor::DEFAULT_DURATION);
 
     info!("{}", hive_props);
@@ -248,7 +249,7 @@ fn main() {
                 debug!("VAL {:?} is {:?}", gpio_conf.is_up_pin, v);
                 let (lock, cvar) = &*up_pair_clone;
                 let mut going_up = lock.lock().unwrap();
-                if v == 1 {
+                if v == 0 {
                     // Reached the top stop
                     CURRENT_MOVE_STATE.store(MoveState::UP, Ordering::SeqCst);
                     *going_up = false;
@@ -268,7 +269,7 @@ fn main() {
                 debug!("VAL {:?} is {:?}", pin_num, v);
                 let (lock, cvar) = &*up_pair_clone;
                 let mut going_down = lock.lock().unwrap();
-                if v == 1 {
+                if v == 0 {
                     // Reached the bottom stop
                     CURRENT_MOVE_STATE.store(MoveState::DOWN, Ordering::SeqCst);
                     *going_down = false;

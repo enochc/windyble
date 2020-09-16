@@ -8,8 +8,9 @@ After=systemd-networkd-wait-online.service
 
 [Service]
 Type=idle
+WorkingDirectory=/home/pi/windyble
 ExecStartPre=/bin/sleep 5
-ExecStart=/home/pi/board/board/target/arm-unknown-linux-gnueabihf/release/board &
+ExecStart=/home/pi/windyble/target/arm-unknown-linux-gnueabihf/release/windyble &
 
 [Install]
 WantedBy=multi-user.target
