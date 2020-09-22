@@ -1,0 +1,6 @@
+listen = "(address):3003"
+[Properties]
+moveup = false
+movedown = false
+speed = 400
+pt = 2

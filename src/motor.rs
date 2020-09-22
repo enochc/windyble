@@ -92,7 +92,7 @@ impl Motor {
     Z	Low	1.5 A
     Low	Low	2 A
      */
-    pub fn set_potentiometer(&self, pt_val: i64) {
+    pub fn set_potentiometer(&self, pt_val: &i64) {
         match pt_val {
             1 => {
                 self.get_output(self.gpio_config.pt1, false).set_low();
@@ -183,7 +183,7 @@ impl Motor {
 
     }
 
-    pub fn init(&self) {
+    pub fn init(&self, init_pt:&i64) {
         // self.dir_pin.export().expect("Failed to export DIR pin");
         // self.step_pin.export().expect("Failed to export STEP pin");
         // self.power_pin.export().expect("Failed to export PWR pin");
@@ -192,12 +192,12 @@ impl Motor {
         // self.pt_pin_2.export().expect("Failed to export pt2");
 
         // Sleep a moment to allow the pin privileges to update
-        sleep(Duration::from_millis(100));
+        // sleep(Duration::from_millis(100));
 
         // self.step_pin.set_direction(Direction::Low).expect("Failed to set direction on set pin");
         // self.dir_pin.set_direction(Direction::Low).expect("Failed to set direction on direction pin");
         // PT pins default to input mode
-        self.set_potentiometer(0);
+        self.set_potentiometer(init_pt);
         // self.power_pin.set_direction(Direction::Out).expect("Failed to set direction on Power pin");
         self.power_motor(false);
     }
