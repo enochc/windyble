@@ -67,13 +67,7 @@ impl Motor {
 
 
     pub fn new(gpio_config:GpioConfig, is_test: bool) -> Motor {
-
-        #[cfg(target_arch = "arm")]
         let gpio = Gpio::new().unwrap();
-
-        #[cfg(not(target_arch = "arm"))]
-            let gpio = Gpio{};
-
         return Motor {
             gpio_config,
             running: Arc::new(AtomicBool::new(false)),
@@ -115,7 +109,7 @@ impl Motor {
 
 
     fn power_motor(&self, on: bool) {
-        debug!("switching motor ({:?}) {}", self.gpio_config.power_relay_pin, if on { "low" } else { "high" });
+        debug!("switching motor ({:?}) {}", self.gpio_config.power_relay_pin, if on { "on" } else { "off" });
         let mut pin = self.get_output(self.gpio_config.power_relay_pin, false);
         pin.set_reset_on_drop(false);
         if on {
@@ -197,9 +191,10 @@ impl Motor {
         // self.step_pin.set_direction(Direction::Low).expect("Failed to set direction on set pin");
         // self.dir_pin.set_direction(Direction::Low).expect("Failed to set direction on direction pin");
         // PT pins default to input mode
+        self.power_motor(false);
         self.set_potentiometer(init_pt);
         // self.power_pin.set_direction(Direction::Out).expect("Failed to set direction on Power pin");
-        self.power_motor(false);
+
     }
 
 

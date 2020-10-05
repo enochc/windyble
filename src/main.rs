@@ -20,10 +20,13 @@ use crate::mock_gpio::Gpio;
 #[cfg(not(target_arch = "arm"))]
 use crate::mock_gpio::Level::High;
 use crate::motor::Motor;
+use std::path::Path;
 
 mod motor;
 #[cfg(not(target_arch = "arm"))]
 mod mock_gpio;
+
+
 
 #[derive(Clone, Copy)]
 pub struct GpioConfig {
@@ -41,7 +44,8 @@ pub struct GpioConfig {
 pub const GPIO_CONF: GpioConfig = GpioConfig {
     step: 11,
     dir: 9,
-    power_relay_pin: 10,
+    // enable motor pin
+    power_relay_pin: 16,//10,
     pt1: 6,
     pt2: 5,
     is_up_pin: Some(2),
@@ -63,10 +67,8 @@ pub const GPIO_CONF: GpioConfig = GpioConfig {
 // };
 
 // init logging
-#[cfg(not(target_arch = "arm"))]
 pub struct SimpleLogger;
 
-#[cfg(not(target_arch = "arm"))]
 impl log::Log for SimpleLogger {
     fn enabled(&self, metadata: &Metadata) -> bool {
         metadata.level() <= Level::Debug
@@ -81,22 +83,18 @@ impl log::Log for SimpleLogger {
     fn flush(&self) {}
 }
 
-#[cfg(not(target_arch = "arm"))]
 pub static LOGGER: SimpleLogger = SimpleLogger;
 
-#[cfg(not(target_arch = "arm"))]
-fn init_logging() -> Result<(), SetLoggerError> {
-    log::set_logger(&LOGGER).map(|()| log::set_max_level(LevelFilter::Debug))
-        .expect("failed to init logger");
-    Ok(())
-}
+fn init_logging(to_console:bool) -> Result<(), SetLoggerError> {
+    if to_console {
+        log::set_logger(&LOGGER).map(|()| log::set_max_level(LevelFilter::Debug))
+            .expect("failed to init logger");
+    }else{
+        log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
+    }
 
-#[cfg(target_arch = "arm")]
-fn init_logging() -> Result<(), SetLoggerError> {
-    log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     Ok(())
 }
-// done init logging
 
 
 struct PinDir;
@@ -130,7 +128,7 @@ pub fn current_direction() -> u8 {
 
 #[allow(dead_code)]
 fn main_test() {
-    init_logging().expect("Failed to Init logger");
+    init_logging(true).expect("Failed to Init logger");
     start_input_listener(6, move |v| {
         println!("VAL {:?} is {:?}", 6, v);
     });
@@ -160,17 +158,26 @@ fn main_test() {
 ///     windyble test connect 192.168.0.43:3000
 /// ```
 fn main() {
-    init_logging().expect("Failed to Init logger");
+
     /*
     pt is 0,1,2,3 potentiometer limiting for the motor 0.5 A, 1 A, 1.5 A, 2 A
     default is 2 (1.5 amps)
      */
     const INIT_PT: i64 = 2;
     let args: Vec<String> = env::args().collect();
+    let to_console = args.contains(&String::from("console"));
+    init_logging(to_console).expect("Failed to Init logger");
     let is_test = args.contains(&String::from("test"));
     let addr = local_ipaddress::get().unwrap();
     let props_file_name = args.get(args.len() - 1);
-    let hive_properties = fs::read_to_string(props_file_name.unwrap());
+    let path = Path::new(props_file_name.unwrap());
+    let hive_properties = if path.is_file() && !path.to_str().unwrap().contains("windyble") {
+        debug!("found toml file {:?}",path);
+        fs::read_to_string(path)
+    } else {
+        debug!("using default hive.toml");
+        fs::read_to_string("hive.toml")
+    };
     let properties: String = match hive_properties {
         Ok(p) => {
             p.replace("(address)", &addr)
@@ -325,7 +332,7 @@ fn main() {
 
     /*
      The derived_pt is the value that was passed in via the toml text file
-     which we use for initializing the motor with
+     which we use for initializing the motor
      */
     let derived_pt: i64 = pi_hive.properties.get("pt").unwrap()
         .value.as_ref()
