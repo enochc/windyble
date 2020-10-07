@@ -1,6 +1,12 @@
+
+# connect = "127.0.0.1:3000"
+# turn values:
+#    STOPPED = 0,
+#    GO= 1,
+#    READY_UP = 2,
+#    READY_DOWN = 3,
 listen = "(address):3000"
 [Properties]
-moveup = false
-movedown = false
+turn = 0
 speed = 400
 pt = 2

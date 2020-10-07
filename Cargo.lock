@@ -442,8 +442,7 @@ dependencies = [
 
 [[package]]
 name = "hive"
-version = "0.1.402"
-source = "git+https://github.com/enochc/hive?branch=new_master#ba7d4e80af46c63f062513eb07dfefc580cedf20"
+version = "0.1.403"
 dependencies = [
  "async-std",
  "config",

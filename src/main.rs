@@ -54,6 +54,45 @@ pub const GPIO_CONF: GpioConfig = GpioConfig {
     go_down_pin: Some(17),
 };
 
+enum Motor_Turn_State {
+    STOPPED = 0,
+    GO= 1,
+    READY_UP = 2,
+    READY_DOWN = 3,
+}
+impl Motor_Turn_State {
+    fn value(&self)->u8 {
+        return match self {
+            Motor_Turn_State::GO => 1,
+            Motor_Turn_State::READY_UP => 2,
+            Motor_Turn_State::READY_DOWN => 3,
+            Motor_Turn_State::STOPPED => 0,
+        }
+    }
+}
+impl PartialEq<Motor_Turn_State> for i8 {
+    fn eq(&self, other: &Motor_Turn_State) -> bool {
+        return match other {
+            Motor_Turn_State::GO if self == &1 => true,
+            Motor_Turn_State::READY_UP if self == &2 => true,
+            Motor_Turn_State::READY_DOWN if self == &3 => true,
+            Motor_Turn_State::STOPPED if self == &0 => true,
+            _ => false,
+        }
+    }
+}
+impl From<i8> for Motor_Turn_State{
+    fn from(v: i8) -> Self {
+        return match v {
+                3 => Motor_Turn_State::READY_DOWN,
+                2 => Motor_Turn_State::READY_UP,
+                1 => Motor_Turn_State::GO,
+                _ => Motor_Turn_State::STOPPED,
+            }
+    }
+}
+
+
 // const GPIO_MAIN: GpioConfig = GpioConfig {
 //     step: 26,
 //     dir: 19,
@@ -186,8 +225,7 @@ fn main() {
             error!("Failed to read hive properties file {:?}", props_file_name);
             format!("listen = \"{}:3000\"
             [Properties]
-            moveup = false
-            movedown = false
+            turn: 0
             speed = {}
             pt = {}", addr, motor::DEFAULT_DURATION, INIT_PT)
         }
@@ -195,6 +233,7 @@ fn main() {
 
     debug!("{}", properties);
     let mut pi_hive = Hive::new_from_str("LEFT", properties.as_str());
+    let is_client: bool = !pi_hive.is_sever();
 
     let motor: Motor = Motor::new(GPIO_CONF, is_test);
 
@@ -230,6 +269,7 @@ fn main() {
     let up_pair: Arc<(Mutex<bool>, Condvar)> = Arc::new((Mutex::new(false), Condvar::new()));
     let speed_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
     let pt_val_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
+    let go_direction: Arc<Mutex<Motor_Turn_State>> = Arc::new(Mutex::new(Motor_Turn_State::STOPPED));
 
     let gpio_conf: GpioConfig = GPIO_CONF;
     if gpio_conf.is_up_pin.is_some() {
@@ -308,19 +348,56 @@ fn main() {
         cvar.notify_one();
     });
 
-    let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    pi_hive.get_mut_property("moveup").unwrap().on_changed.connect(move |value| {
-        let do_go_up = value.unwrap().as_bool().unwrap();
-        let dir = if do_go_up { Some(PinDir::COUNTER_CLOCKWISE) } else { None };
-        &turn_motor(dir, &*up_pair2);
+    /*
+        moveup and movedown are a ready go flag, 2 means, stopped, 1 means power up and get ready
+        0 means to go. This is because we're bridging the stop/direction pins on the motor drivers
+        so only one controller needs to run the motors and they stay perfectaly in sync. But both
+        controllers need to power on the motor and prepare it to turn.
+     */
+    let pi_have_handle = pi_hive.get_handler();
+
+
+    pi_hive.get_mut_property("turn").unwrap().on_changed.connect({
+        let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+        let motor_clone = motor.clone();
+
+        move |value| {
+            let do_go_up = value.unwrap().as_integer().unwrap() as i8;
+            if do_go_up == Motor_Turn_State::READY_DOWN || do_go_up == Motor_Turn_State::READY_UP { // Ready
+                debug!("power up!");
+                motor_clone.power_motor(true);
+                *go_direction.lock().unwrap() = do_go_up.into();
+
+                if is_client {
+                    block_on(
+                        pi_have_handle.clone()
+                        .send_property_value("turn",
+                                             Some(&Motor_Turn_State::GO.value().into())
+                        )
+                    );
+                }
+            } else if do_go_up == Motor_Turn_State::GO && !is_client { // GO
+                if !is_client {
+                    let direction = match *go_direction.lock().unwrap(){
+                        Motor_Turn_State::READY_UP => PinDir::COUNTER_CLOCKWISE,
+                        _ => PinDir::CLOCKWISE
+                    };
+                    &turn_motor(Some(direction), &*up_pair2);
+                }
+            } else if do_go_up == 2 {
+                // STOP
+                // the motor turns itself off
+                &turn_motor(None, &*up_pair2);
+            }
+        }
     });
 
-    let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
-    pi_hive.get_mut_property("movedown").unwrap().on_changed.connect(move |value| {
-        let do_go_down = value.unwrap().as_bool().unwrap();
-        let dir = if do_go_down { Some(PinDir::CLOCKWISE) } else { None };
-        turn_motor(dir, &*up_pair2);
-    });
+    // let up_pair2: Arc<(Mutex<bool>, Condvar)> = up_pair.clone();
+    // pi_hive.get_mut_property("movedown").unwrap().on_changed.connect(move |value| {
+    //     let do_go_down = value.unwrap().as_bool().unwrap();
+    //     let dir = if do_go_down { Some(PinDir::CLOCKWISE) } else { None };
+    //     turn_motor(dir, &*up_pair2);
+    // });
 
     let speed_clone = speed_pair.clone();
     pi_hive.get_mut_property("speed").unwrap().on_changed.connect(move |value| {

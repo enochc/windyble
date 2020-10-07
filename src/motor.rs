@@ -108,7 +108,7 @@ impl Motor {
     }
 
 
-    fn power_motor(&self, on: bool) {
+    pub fn power_motor(&self, on: bool) {
         debug!("switching motor ({:?}) {}", self.gpio_config.power_relay_pin, if on { "on" } else { "off" });
         let mut pin = self.get_output(self.gpio_config.power_relay_pin, false);
         pin.set_reset_on_drop(false);
