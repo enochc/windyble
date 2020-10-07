@@ -3,9 +3,10 @@
 # turn values:
 #    STOPPED = 0,
 #    GO= 1,
-#    READY_UP = 2,
-#    READY_DOWN = 3,
-listen = "(address):3000"
+#    ReadyUp = 2,
+#    ReadyDown = 3,
+#listen = "(address):3000"
+connect = "192.168.5.45:3000"
 [Properties]
 turn = 0
 speed = 400

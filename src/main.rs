@@ -54,40 +54,40 @@ pub const GPIO_CONF: GpioConfig = GpioConfig {
     go_down_pin: Some(17),
 };
 
-enum Motor_Turn_State {
-    STOPPED = 0,
-    GO= 1,
-    READY_UP = 2,
-    READY_DOWN = 3,
+enum MotorTurnState {
+    Stopped = 0,
+    Go = 1,
+    ReadyUp = 2,
+    ReadyDown = 3,
 }
-impl Motor_Turn_State {
+impl MotorTurnState {
     fn value(&self)->u8 {
         return match self {
-            Motor_Turn_State::GO => 1,
-            Motor_Turn_State::READY_UP => 2,
-            Motor_Turn_State::READY_DOWN => 3,
-            Motor_Turn_State::STOPPED => 0,
+            MotorTurnState::Go => 1,
+            MotorTurnState::ReadyUp => 2,
+            MotorTurnState::ReadyDown => 3,
+            MotorTurnState::Stopped => 0,
         }
     }
 }
-impl PartialEq<Motor_Turn_State> for i8 {
-    fn eq(&self, other: &Motor_Turn_State) -> bool {
+impl PartialEq<MotorTurnState> for i8 {
+    fn eq(&self, other: &MotorTurnState) -> bool {
         return match other {
-            Motor_Turn_State::GO if self == &1 => true,
-            Motor_Turn_State::READY_UP if self == &2 => true,
-            Motor_Turn_State::READY_DOWN if self == &3 => true,
-            Motor_Turn_State::STOPPED if self == &0 => true,
+            MotorTurnState::Go if self == &1 => true,
+            MotorTurnState::ReadyUp if self == &2 => true,
+            MotorTurnState::ReadyDown if self == &3 => true,
+            MotorTurnState::Stopped if self == &0 => true,
             _ => false,
         }
     }
 }
-impl From<i8> for Motor_Turn_State{
+impl From<i8> for MotorTurnState {
     fn from(v: i8) -> Self {
         return match v {
-                3 => Motor_Turn_State::READY_DOWN,
-                2 => Motor_Turn_State::READY_UP,
-                1 => Motor_Turn_State::GO,
-                _ => Motor_Turn_State::STOPPED,
+                3 => MotorTurnState::ReadyDown,
+                2 => MotorTurnState::ReadyUp,
+                1 => MotorTurnState::Go,
+                _ => MotorTurnState::Stopped,
             }
     }
 }
@@ -269,7 +269,7 @@ fn main() {
     let up_pair: Arc<(Mutex<bool>, Condvar)> = Arc::new((Mutex::new(false), Condvar::new()));
     let speed_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
     let pt_val_pair: Arc<(Mutex<i64>, Condvar)> = Arc::new((Mutex::new(0), Condvar::new()));
-    let go_direction: Arc<Mutex<Motor_Turn_State>> = Arc::new(Mutex::new(Motor_Turn_State::STOPPED));
+    let go_direction: Arc<Mutex<MotorTurnState>> = Arc::new(Mutex::new(MotorTurnState::Stopped));
 
     let gpio_conf: GpioConfig = GPIO_CONF;
     if gpio_conf.is_up_pin.is_some() {
@@ -363,7 +363,7 @@ fn main() {
 
         move |value| {
             let do_go_up = value.unwrap().as_integer().unwrap() as i8;
-            if do_go_up == Motor_Turn_State::READY_DOWN || do_go_up == Motor_Turn_State::READY_UP { // Ready
+            if do_go_up == MotorTurnState::ReadyDown || do_go_up == MotorTurnState::ReadyUp { // Ready
                 debug!("power up!");
                 motor_clone.power_motor(true);
                 *go_direction.lock().unwrap() = do_go_up.into();
@@ -372,22 +372,24 @@ fn main() {
                     block_on(
                         pi_have_handle.clone()
                         .send_property_value("turn",
-                                             Some(&Motor_Turn_State::GO.value().into())
+                                             Some(&MotorTurnState::Go.value().into())
                         )
                     );
                 }
-            } else if do_go_up == Motor_Turn_State::GO && !is_client { // GO
+            } else if do_go_up == MotorTurnState::Go && !is_client { // GO
                 if !is_client {
                     let direction = match *go_direction.lock().unwrap(){
-                        Motor_Turn_State::READY_UP => PinDir::COUNTER_CLOCKWISE,
+                        MotorTurnState::ReadyUp => PinDir::COUNTER_CLOCKWISE,
                         _ => PinDir::CLOCKWISE
                     };
                     &turn_motor(Some(direction), &*up_pair2);
                 }
-            } else if do_go_up == 2 {
+            } else if do_go_up == MotorTurnState::Stopped {
                 // STOP
                 // the motor turns itself off
                 &turn_motor(None, &*up_pair2);
+                // the client doesn't power itself off because its out of the run/norun loop
+                motor_clone.power_motor(false);
             }
         }
     });
