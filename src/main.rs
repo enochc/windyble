@@ -27,7 +27,6 @@ mod motor;
 mod mock_gpio;
 
 
-
 #[derive(Clone, Copy)]
 pub struct GpioConfig {
     step: u8,
@@ -60,16 +59,18 @@ enum MotorTurnState {
     ReadyUp = 2,
     ReadyDown = 3,
 }
+
 impl MotorTurnState {
-    fn value(&self)->u8 {
+    fn value(&self) -> u8 {
         return match self {
             MotorTurnState::Go => 1,
             MotorTurnState::ReadyUp => 2,
             MotorTurnState::ReadyDown => 3,
             MotorTurnState::Stopped => 0,
-        }
+        };
     }
 }
+
 impl PartialEq<MotorTurnState> for i8 {
     fn eq(&self, other: &MotorTurnState) -> bool {
         return match other {
@@ -78,17 +79,18 @@ impl PartialEq<MotorTurnState> for i8 {
             MotorTurnState::ReadyDown if self == &3 => true,
             MotorTurnState::Stopped if self == &0 => true,
             _ => false,
-        }
+        };
     }
 }
+
 impl From<i8> for MotorTurnState {
     fn from(v: i8) -> Self {
         return match v {
-                3 => MotorTurnState::ReadyDown,
-                2 => MotorTurnState::ReadyUp,
-                1 => MotorTurnState::Go,
-                _ => MotorTurnState::Stopped,
-            }
+            3 => MotorTurnState::ReadyDown,
+            2 => MotorTurnState::ReadyUp,
+            1 => MotorTurnState::Go,
+            _ => MotorTurnState::Stopped,
+        };
     }
 }
 
@@ -124,11 +126,11 @@ impl log::Log for SimpleLogger {
 
 pub static LOGGER: SimpleLogger = SimpleLogger;
 
-fn init_logging(to_console:bool) -> Result<(), SetLoggerError> {
+fn init_logging(to_console: bool) -> Result<(), SetLoggerError> {
     if to_console {
         log::set_logger(&LOGGER).map(|()| log::set_max_level(LevelFilter::Debug))
             .expect("failed to init logger");
-    }else{
+    } else {
         log4rs::init_file("log4rs.yaml", Default::default()).unwrap();
     }
 
@@ -197,7 +199,6 @@ fn main_test() {
 ///     windyble test connect 192.168.0.43:3000
 /// ```
 fn main() {
-
     /*
     pt is 0,1,2,3 potentiometer limiting for the motor 0.5 A, 1 A, 1.5 A, 2 A
     default is 2 (1.5 amps)
@@ -211,7 +212,7 @@ fn main() {
     let props_file_name = args.get(args.len() - 1);
     let path = Path::new(props_file_name.unwrap());
     let hive_properties = if path.is_file() && !path.to_str().unwrap().contains("windyble") {
-        debug!("found toml file {:?}",path);
+        debug!("found toml file {:?}", path);
         fs::read_to_string(path)
     } else {
         debug!("using default hive.toml");
@@ -371,14 +372,14 @@ fn main() {
                 if is_client {
                     block_on(
                         pi_have_handle.clone()
-                        .send_property_value("turn",
-                                             Some(&MotorTurnState::Go.value().into())
-                        )
+                            .send_property_value("turn",
+                                                 Some(&MotorTurnState::Go.value().into()),
+                            )
                     );
                 }
             } else if do_go_up == MotorTurnState::Go && !is_client { // GO
                 if !is_client {
-                    let direction = match *go_direction.lock().unwrap(){
+                    let direction = match *go_direction.lock().unwrap() {
                         MotorTurnState::ReadyUp => PinDir::COUNTER_CLOCKWISE,
                         _ => PinDir::CLOCKWISE
                     };

@@ -1,4 +1,3 @@
-
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::thread;
 use std::thread::sleep;
@@ -19,11 +18,11 @@ use crate::{PinDir, GpioConfig};
 
 #[derive(Clone)]
 pub struct Motor {
-    gpio_config:GpioConfig,
+    gpio_config: GpioConfig,
     running: Arc<AtomicBool>,
     step_duration: Arc<AtomicU64>,
     is_test: bool,
-    gpio:Gpio,
+    gpio: Gpio,
 }
 
 // impl Clone for Motor {
@@ -54,19 +53,19 @@ impl Motor {
         self.step_duration.store(speed, Ordering::SeqCst);
     }
 
-    fn get_input(&self, num:u8, reset:bool) ->InputPin {
+    fn get_input(&self, num: u8, reset: bool) -> InputPin {
         let mut pin = self.gpio.get(num).unwrap().into_input();
         pin.set_reset_on_drop(reset);
         return pin;
     }
-    fn get_output(&self, num:u8, reset:bool) ->OutputPin {
+    fn get_output(&self, num: u8, reset: bool) -> OutputPin {
         let mut pin = self.gpio.get(num).unwrap().into_output();
         pin.set_reset_on_drop(reset);
         return pin;
     }
 
 
-    pub fn new(gpio_config:GpioConfig, is_test: bool) -> Motor {
+    pub fn new(gpio_config: GpioConfig, is_test: bool) -> Motor {
         let gpio = Gpio::new().unwrap();
         return Motor {
             gpio_config,
@@ -91,15 +90,15 @@ impl Motor {
             1 => {
                 self.get_output(self.gpio_config.pt1, false).set_low();
                 self.get_input(self.gpio_config.pt2, false);
-            },
+            }
             2 => {
                 self.get_input(self.gpio_config.pt1, false);
                 self.get_output(self.gpio_config.pt2, false).set_low();
-            },
+            }
             3 => {
                 self.get_output(self.gpio_config.pt1, false).set_low();
                 self.get_output(self.gpio_config.pt2, false).set_low();
-            },
+            }
             _ => {
                 self.get_input(self.gpio_config.pt1, false);
                 self.get_input(self.gpio_config.pt2, false);
@@ -114,12 +113,12 @@ impl Motor {
         pin.set_reset_on_drop(false);
         if on {
             pin.set_low();
-        } else{
+        } else {
             pin.set_high();
         }
     }
 
-    pub fn is_running(&self)->bool{
+    pub fn is_running(&self) -> bool {
         return self.running.load(Ordering::SeqCst);
     }
 
@@ -133,17 +132,17 @@ impl Motor {
 
         self.set_direction(dir);
         let clone = self.clone();
-        let speed = if self.is_test {1_000_000} else {self.step_duration.load(Ordering::SeqCst)};
+        let speed = if self.is_test { 1_000_000 } else { self.step_duration.load(Ordering::SeqCst) };
+        let duration = Duration::from_micros(speed);
         self.running.store(true, Ordering::SeqCst);
         let run_clone = self.running.clone();
         thread::spawn(move || {
-            // println!("thats right {}", self.is_test);
             let mut step_pin = clone.gpio.get(clone.gpio_config.step).expect("Failed to unwrap step pin").into_output();
             while run_clone.load(Ordering::SeqCst) {
                 step_pin.set_high();
-                sleep(Duration::from_micros(speed));
+                sleep(duration);
                 step_pin.set_low();
-                sleep(Duration::from_micros(speed));
+                sleep(duration);
             }
             step_pin.set_low();
             info!("Motor Done turning");
@@ -172,12 +171,10 @@ impl Motor {
                 // self.gpio.get(self.gpio_config.dir).unwrap().into_output().set_high();
                 self.get_output(self.gpio_config.dir, false).set_high();
             }
-
         }
-
     }
 
-    pub fn init(&self, init_pt:&i64) {
+    pub fn init(&self, init_pt: &i64) {
         // self.dir_pin.export().expect("Failed to export DIR pin");
         // self.step_pin.export().expect("Failed to export STEP pin");
         // self.power_pin.export().expect("Failed to export PWR pin");
@@ -194,7 +191,6 @@ impl Motor {
         self.power_motor(false);
         self.set_potentiometer(init_pt);
         // self.power_pin.set_direction(Direction::Out).expect("Failed to set direction on Power pin");
-
     }
 
 
@@ -208,5 +204,4 @@ impl Motor {
         // self.pt_pin_2.unexport().expect("Failed to un export pt2");
         info!("En-exported pins for motor");
     }
-
 }
